@@ -9,6 +9,7 @@ const readline = require('readline');
 const BACKEND_URL = 'https://gitset-core-v2.vercel.app/api/engine';
 const CONFIG_DIR = path.join(os.homedir(), '.gitset');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
+const TEMPLATE_FILE = path.join(CONFIG_DIR, 'COMMIT-MSG-TEMPLATE.md');
 
 const colors = {
   reset: '\x1b[0m',
@@ -16,7 +17,8 @@ const colors = {
   yellow: '\x1b[33m',
   red: '\x1b[31m',
   cyan: '\x1b[36m',
-  blue: '\x1b[34m'
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m'
 };
 
 function log(msg, color = 'reset') {
@@ -185,6 +187,17 @@ function getRecentCommits(count = 10) {
   return output ? output.split('\n') : [];
 }
 
+function loadTemplate() {
+  if (!fs.existsSync(TEMPLATE_FILE)) {
+    return null;
+  }
+  try {
+    return fs.readFileSync(TEMPLATE_FILE, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
 function prepareChangesData(mode = 'unstaged') {
   const files = getChangedFiles(mode);
   
@@ -222,7 +235,7 @@ function prepareChangesData(mode = 'unstaged') {
   };
 }
 
-async function generateCommitMessage(changesData, customMode = false) {
+async function generateCommitMessage(changesData, options = {}) {
   const gitsetKey = getGitsetKey();
   
   if (!gitsetKey) {
@@ -234,11 +247,30 @@ async function generateCommitMessage(changesData, customMode = false) {
     gitset_key: gitsetKey,
     changes: changesData.changes,
     diff: changesData.diff,
-    custom_mode: customMode
+    custom_mode: options.customMode || false
   };
 
-  if (customMode) {
-    payload.commit_history = getRecentCommits(15);
+  if (options.customMode) {
+    const template = loadTemplate();
+    if (template) {
+      payload.custom_template = template;
+      log('→ Custom template loaded', 'magenta');
+    } else {
+      log('⚠️  No template found. Use: gitset template --sync', 'yellow');
+    }
+  }
+
+  if (options.historicalCount > 0) {
+    const commits = getRecentCommits(options.historicalCount);
+    payload.commit_history = commits;
+    payload.historical_count = options.historicalCount;
+    
+    log(`\n📊 Historical Analysis Debug:`, 'magenta');
+    log(`   Requested: ${options.historicalCount} commits`, 'cyan');
+    log(`   Retrieved: ${commits.length} commits`, 'cyan');
+    log(`   Commits:`, 'cyan');
+    commits.forEach((msg, i) => log(`      ${i + 1}. ${msg}`, 'yellow'));
+    log('');
   }
 
   try {
@@ -295,8 +327,6 @@ async function commandCommit(options = {}) {
     modeLabel = 'all changes';
   }
 
-  const customMode = options.custom || false;
-
   log(`\n📊 Analyzing ${modeLabel} changes...\n`, 'cyan');
 
   const changesData = prepareChangesData(mode);
@@ -308,7 +338,10 @@ async function commandCommit(options = {}) {
 
   log(`→ Files detected: ${changesData.files_count}`, 'blue');
 
-  const result = await generateCommitMessage(changesData, customMode);
+  const result = await generateCommitMessage(changesData, {
+    customMode: options.custom,
+    historicalCount: options.historical
+  });
 
   if (result) {
     log('\n✓ Commit message generated:\n', 'green');
@@ -441,19 +474,107 @@ async function commandVerify() {
   log('');
 }
 
+function commandTemplate(action) {
+  ensureConfigDir();
+
+  if (!action || action === '--sync') {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    log('\n=== Gitset Template Manager ===', 'blue');
+    log('Create a custom commit message template\n', 'cyan');
+    log('Example template structure:', 'yellow');
+    log('---', 'yellow');
+    log('type(scope): brief description', 'yellow');
+    log('', 'yellow');
+    log('- Use present tense', 'yellow');
+    log('- Keep first line under 72 characters', 'yellow');
+    log('- Add detailed context if needed', 'yellow');
+    log('---\n', 'yellow');
+
+    const lines = [];
+    
+    log('Enter your template (press Ctrl+D or Ctrl+Z when done):\n', 'cyan');
+
+    rl.on('line', (line) => {
+      lines.push(line);
+    });
+
+    rl.on('close', () => {
+      if (lines.length === 0) {
+        log('\n✗ No template provided', 'red');
+        return;
+      }
+
+      const template = lines.join('\n');
+      fs.writeFileSync(TEMPLATE_FILE, template, 'utf8');
+      
+      log('\n✓ Template saved successfully', 'green');
+      log(`📁 Location: ${TEMPLATE_FILE}`, 'cyan');
+      log(`\nUse with: gitset commit --custom\n`, 'yellow');
+    });
+  } else if (action === '--show') {
+    if (!fs.existsSync(TEMPLATE_FILE)) {
+      log('✗ No template found', 'red');
+      log('  Create one with: gitset template --sync', 'yellow');
+      return;
+    }
+
+    const template = fs.readFileSync(TEMPLATE_FILE, 'utf8');
+    log('\n=== Current Template ===', 'blue');
+    log(template, 'cyan');
+    log('');
+  } else if (action === '--delete') {
+    if (!fs.existsSync(TEMPLATE_FILE)) {
+      log('✗ No template to delete', 'red');
+      return;
+    }
+
+    fs.unlinkSync(TEMPLATE_FILE);
+    log('✓ Template deleted successfully', 'green');
+  } else {
+    log('✗ Invalid template command', 'red');
+    log('  Available: --sync, --show, --delete', 'yellow');
+  }
+}
+
 function showHelp() {
-  log('\n🚀 Gitset CLI v2.0', 'blue');
+  log('\n🚀 Gitset CLI v2.1', 'blue');
   log('\nAvailable commands:\n', 'cyan');
+  
+  log('AUTHENTICATION:', 'magenta');
   log('  gitset auth               Authenticate with Gitset Key', 'green');
   log('  gitset verify             Verify server connection', 'green');
   log('  gitset logout             Close session', 'green');
+  
+  log('\nCOMMIT GENERATION:', 'magenta');
   log('  gitset commit             Generate commit message (unstaged changes)', 'green');
   log('  gitset commit --staged    Generate commit message (staged only)', 'green');
   log('  gitset commit --all       Generate commit message (all changes)', 'green');
-  log('  gitset commit --custom    Generate with history analysis', 'green');
+  log('  gitset commit --custom    Use custom template for generation', 'green');
+  log('  gitset commit --historical --N   Use last N commits for style (5-20)', 'green');
+  log('  gitset commit --historical       Use last 10 commits (default)', 'green');
+  
+  log('\nTEMPLATE MANAGEMENT:', 'magenta');
+  log('  gitset template --sync    Create/update commit message template', 'green');
+  log('  gitset template --show    Display current template', 'green');
+  log('  gitset template --delete  Remove template', 'green');
+  
+  log('\nUTILITIES:', 'magenta');
   log('  gitset status             View repository status', 'green');
   log('  gitset tree               Show project structure', 'green');
   log('  gitset help               Show this help', 'green');
+  
+  log('\nEXAMPLES:', 'magenta');
+  log('  gitset commit --custom --historical --15', 'cyan');
+  log('  gitset commit --all --historical', 'cyan');
+  log('  gitset commit --staged --custom', 'cyan');
+  
+  log('\nNOTE:', 'yellow');
+  log('  Historical range: 5-20 commits (default: 10)', 'yellow');
+  log('  Template stored in: ~/.gitset/COMMIT-MSG-TEMPLATE.md', 'yellow');
   log('');
 }
 
@@ -474,14 +595,34 @@ async function main() {
       commandLogout();
       break;
     
-    case 'commit':
+    case 'commit': {
+      let historicalCount = 0;
+      const historicalIndex = args.indexOf('--historical');
+      
+      if (historicalIndex !== -1) {
+        const nextArg = args[historicalIndex + 1];
+        if (nextArg && nextArg.startsWith('--')) {
+          const countMatch = nextArg.match(/^--(\d+)$/);
+          if (countMatch) {
+            historicalCount = parseInt(countMatch[1]);
+            if (historicalCount < 5) historicalCount = 5;
+            if (historicalCount > 20) historicalCount = 20;
+          }
+        } else {
+          historicalCount = 10;
+        }
+      }
+      
       const options = {
         staged: args.includes('--staged'),
         all: args.includes('--all'),
-        custom: args.includes('--custom')
+        custom: args.includes('--custom'),
+        historical: historicalCount
       };
+      
       await commandCommit(options);
       break;
+    }
     
     case 'status':
       commandStatus();
@@ -491,6 +632,10 @@ async function main() {
       log('\n📂 Project structure:\n', 'blue');
       commandTree();
       log('');
+      break;
+    
+    case 'template':
+      commandTemplate(args[1]);
       break;
     
     case 'help':

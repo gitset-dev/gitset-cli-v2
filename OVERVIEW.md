@@ -1,182 +1,21 @@
-# ⭐ **Complete Gitset Flow (WebApp → Turso → CLI → Core Backend)**
+# ⭐ **Complete Gitset Flow**
 
-### **Simplified explanation, no code**
-
----
-
-### **1. User authenticates in the Gitset WebApp**
-
-The WebApp obtains and stores in Turso:
-
-* **gitset_key**
-* **user_email**
-* **user_plan** (basic / pro / enterprise)
-* **github_oauth_token**
-
-This data is stored in the `credentials` table.
+### **End-to-end system architecture and functionality**
 
 ---
 
-### **2. User installs the CLI or NPM package (gitset-cli-npm)**
+## **System Architecture**
 
-* Not yet published; tested with `npm link`.
-* This CLI lives separately from the backend (`gitset-core-v2`), though they work together.
+### **Core Components**
 
----
-
-### **3. User runs `gitset auth` in their terminal**
-
-* The CLI asks for the **Gitset Key**.
-* The CLI calls `gitset-core-v2` → `/validate`.
-* The backend searches for the key in Turso:
-  * If it exists, returns email, plan, and GitHub token.
-* The CLI saves this info in `~/.gitset/config.json`.
-
----
-
-### **4. User makes changes to their repository and executes:**
-
-**Three analysis modes available:**
-
-* `gitset commit` → analyzes **unstaged changes** (working directory)
-* `gitset commit --staged` → analyzes **staged changes only**
-* `gitset commit --all` → analyzes **both staged and unstaged changes**
-
-Optional flag:
-* `gitset commit --custom` → includes commit history analysis for style consistency
-
-The CLI inspects the local repo:
-* modified files
-* content before/after
-* diff
-* history (if using custom mode)
-
----
-
-### **5. CLI sends changes to Gitset Core backend**
-
-Payload:
-
-* gitset_key
-* changes (file status, before/after content)
-* diff (full git diff)
-* commit_history (if custom mode enabled)
-
----
-
-### **6. Backend validates the Gitset Key again**
-
-Queries Turso to confirm:
-
-* key exists
-* user plan
-* email
-* OAuth token
-
-Then checks **monthly quota based on plan** and updates it.
-
----
-
-### **7. Backend processes the changes**
-
-* Summarizes added, modified, or deleted files.
-* Calculates additions and deletions.
-* Builds a structured prompt for the AI generator.
-
----
-
-### **8. Backend calls Gemini AI**
-
-* Uses a **multi-key system with fallback**.
-* Generates the commit message.
-* Cleans and standardizes the format.
-
----
-
-### **9. Backend responds to CLI**
-
-Includes:
-
-* commit_message (in Conventional Commits format)
-* quota information (used/remaining)
-* change statistics (files, additions, deletions)
-
----
-
-### **10. CLI displays it to the user**, ready to copy/paste into `git commit -m`.
-
----
-
-# 🧩 **BRIEF FLOW SUMMARY**
-
-**WebApp → Turso → CLI → Core Backend → Gemini → Backend → CLI**
-
-1. WebApp saves credentials in Turso
-2. CLI validates Gitset Key
-3. CLI sends changes (unstaged, staged, or all)
-4. Backend validates and controls quotas
-5. Backend generates commit message using Gemini AI
-6. CLI receives and displays it
-
----
-
-## 📋 **Command Reference**
-
-### Authentication
-* `gitset auth` - Authenticate with your Gitset Key
-* `gitset verify` - Verify connection with server
-* `gitset logout` - Close session
-
-### Commit Message Generation
-* `gitset commit` - Analyze unstaged changes (default)
-* `gitset commit --staged` - Analyze staged changes only
-* `gitset commit --all` - Analyze all changes (staged + unstaged)
-* `gitset commit --custom` - Include commit history for style consistency
-
-### Utilities
-* `gitset status` - View repository and authentication status
-* `gitset tree` - Display project structure
-* `gitset help` - Show available commands
-
----
-
-## 🎯 **Key Features**
-
-### Multi-mode Analysis
-The CLI intelligently analyzes different change states:
-- **Unstaged mode**: Focus on working directory changes before staging
-- **Staged mode**: Generate messages for what's about to be committed
-- **All mode**: Comprehensive analysis of entire repository state
-
-### Smart AI Generation
-- Uses Gemini 2.5 Flash model
-- Multiple API keys with automatic fallback
-- Custom mode learns from commit history for consistent style
-- Generates Conventional Commits format messages
-
-### Quota Management
-Plan-based monthly limits:
-- **Basic**: 50 messages (non-renewable)
-- **Pro**: 200 messages (monthly renewable)
-- **Enterprise**: 600 messages (monthly renewable)
-
-### Secure Authentication
-- Gitset Key validation against Turso database
-- Local config storage in `~/.gitset/config.json`
-- GitHub OAuth token integration for future features
-
----
-
-## 🏗️ **Architecture**
-
-### Components
-1. **WebApp** - User authentication and key generation
-2. **Turso DB** - Credential and usage tracking
+1. **WebApp** - User authentication and credential management
+2. **Turso Database** - Credential storage and usage tracking
 3. **CLI** - Local git analysis and user interface
 4. **Core Backend** - API validation, quota control, AI integration
-5. **Gemini AI** - Commit message generation
+5. **Gemini AI** - Commit message generation engine
 
-### Data Flow
+### **Data Flow**
+
 ```
 User changes → CLI analysis → Backend validation → 
 AI generation → Backend response → CLI display
@@ -184,35 +23,419 @@ AI generation → Backend response → CLI display
 
 ---
 
-## 🔒 **Security & Privacy**
+## **Authentication Flow**
 
-- API keys never stored in git repositories
-- User credentials encrypted in Turso
-- Local config stored securely in user home directory
-- OAuth tokens truncated in responses for security
+### **1. User Authentication in WebApp**
+
+The WebApp collects and stores in Turso:
+
+* **gitset_key** - Unique authentication token
+* **user_email** - User identification
+* **user_plan** - Subscription tier (basic/pro/enterprise)
+* **github_oauth_token** - GitHub integration token
+
+Data is stored in the `credentials` table.
+
+### **2. CLI Installation**
+
+* Install globally via npm (when published)
+* Currently tested with `npm link` for development
+* Works independently from backend while maintaining integration
+
+### **3. CLI Authentication**
+
+* User runs `gitset auth`
+* CLI prompts for Gitset Key
+* CLI calls backend endpoint `/validate`
+* Backend verifies key against Turso database
+* Credentials saved locally in `~/.gitset/config.json`
 
 ---
 
-## 📊 **Database Schema**
+## **Commit Message Generation**
 
-### credentials table
-- gitset_key (primary)
-- user_email
-- user_plan
-- github_oauth_token
-- created_at
+### **Analysis Modes**
 
-### message_usage table
-- user_email
-- created_at
-- (tracked per month for quota limits)
+Three distinct analysis modes available:
+
+* **`gitset commit`** - Analyzes unstaged changes (working directory)
+* **`gitset commit --staged`** - Analyzes staged changes only
+* **`gitset commit --all`** - Analyzes both staged and unstaged changes
+
+### **Enhanced Features**
+
+#### **Custom Template Mode**
+
+* **Command**: `gitset commit --custom`
+* Uses custom template from `~/.gitset/COMMIT-MSG-TEMPLATE.md`
+* AI learns style, format, and conventions from template
+* Maintains consistency across commits
+
+#### **Historical Analysis Mode**
+
+* **Command**: `gitset commit --historical --N`
+* Analyzes last N commits (range: 5-20, default: 10)
+* Examples:
+  * `gitset commit --historical` - Uses 10 commits
+  * `gitset commit --historical --15` - Uses 15 commits
+  * `gitset commit --historical --20` - Uses 20 commits
+* AI learns from commit history patterns
+* Debug logging shows retrieved commits during generation
+
+### **Feature Combinations**
+
+Modes can be combined for powerful workflows:
+
+* `gitset commit --custom --historical --15`
+* `gitset commit --all --historical`
+* `gitset commit --staged --custom`
 
 ---
 
-## 🚀 **Future Enhancements**
+## **Template Management**
 
-- NPM package publication
-- GitHub integration features using OAuth token
-- Advanced custom mode with ML-based style learning
-- Team collaboration features
-- IDE extensions and plugins
+### **Commands**
+
+* **`gitset template --sync`** - Create or update template
+* **`gitset template --show`** - Display current template
+* **`gitset template --delete`** - Remove template
+
+### **Template Structure**
+
+Stored in `~/.gitset/COMMIT-MSG-TEMPLATE.md` as Markdown file.
+
+Example template:
+```
+type(scope): brief description
+
+- Use present tense
+- Keep first line under 72 characters
+- Add detailed context if needed
+```
+
+### **Cross-Platform Compatibility**
+
+The `~/.gitset` directory structure works on:
+* **macOS**: `/Users/username/.gitset/`
+* **Linux**: `/home/username/.gitset/`
+* **Windows**: `C:\Users\username\.gitset\`
+
+Node.js `os.homedir()` ensures proper path resolution across all platforms.
+
+---
+
+## **Backend Processing**
+
+### **1. Key Validation**
+
+* Backend receives gitset_key
+* Queries Turso credentials table
+* Returns user plan and quota information
+
+### **2. Quota Management**
+
+Plan-based monthly limits:
+
+* **Basic**: 50 messages (non-renewable)
+* **Pro**: 200 messages (monthly renewable)
+* **Enterprise**: 600 messages (monthly renewable)
+
+Usage tracked in `message_usage` table.
+
+### **3. Change Analysis**
+
+* Summarizes file operations (add/modify/delete)
+* Calculates line additions and deletions
+* Generates structured diff
+
+### **4. AI Prompt Construction**
+
+Builds comprehensive prompt including:
+* Change summary and statistics
+* Full git diff (truncated if too large)
+* Custom template (if provided)
+* Commit history (if historical mode enabled)
+* Conventional Commits guidelines
+
+### **5. AI Generation**
+
+* Uses Gemini 2.5 Flash model
+* Multi-key system with automatic fallback
+* Handles rate limiting and quota exhaustion
+* Parses and formats response
+
+### **6. Response**
+
+Returns to CLI:
+* **commit_message** - Formatted Conventional Commits message
+* **quota_info** - Usage statistics
+* **analysis** - Change statistics
+
+---
+
+## **Command Reference**
+
+### **Authentication**
+
+| Command | Description |
+|---------|-------------|
+| `gitset auth` | Authenticate with Gitset Key |
+| `gitset verify` | Verify server connection |
+| `gitset logout` | Close session |
+
+### **Commit Generation**
+
+| Command | Description |
+|---------|-------------|
+| `gitset commit` | Analyze unstaged changes |
+| `gitset commit --staged` | Analyze staged changes only |
+| `gitset commit --all` | Analyze all changes |
+| `gitset commit --custom` | Use custom template |
+| `gitset commit --historical --N` | Use N commits for style learning |
+| `gitset commit --historical` | Use 10 commits (default) |
+
+### **Template Management**
+
+| Command | Description |
+|---------|-------------|
+| `gitset template --sync` | Create/update template |
+| `gitset template --show` | Display current template |
+| `gitset template --delete` | Remove template |
+
+### **Utilities**
+
+| Command | Description |
+|---------|-------------|
+| `gitset status` | View repository and auth status |
+| `gitset tree` | Display project structure |
+| `gitset help` | Show available commands |
+
+---
+
+## **Key Features**
+
+### **Multi-Mode Analysis**
+
+The CLI intelligently analyzes different repository states:
+* **Unstaged mode**: Focus on working directory changes before staging
+* **Staged mode**: Generate messages for what's about to be committed
+* **All mode**: Comprehensive analysis of entire repository state
+
+### **Smart AI Generation**
+
+* Uses Gemini 2.5 Flash model for fast, accurate generation
+* Multiple API keys with automatic fallback for high availability
+* Custom template mode for consistent project style
+* Historical analysis learns from past commit patterns
+* Generates Conventional Commits format messages
+
+### **Template System**
+
+* Markdown-based template storage
+* Cross-platform compatibility (macOS, Linux, Windows)
+* Easy creation and management via CLI
+* AI interprets and applies template guidelines
+* Supports future tool extensions
+
+### **Historical Learning**
+
+* Analyzes 5-20 past commits (configurable)
+* Debug logging for development visibility
+* Pattern recognition for style consistency
+* Combines with template mode for maximum customization
+
+### **Secure Authentication**
+
+* Gitset Key validation against Turso database
+* Local config storage in `~/.gitset/config.json`
+* GitHub OAuth token integration for future features
+* Sensitive data truncation in responses
+
+---
+
+## **Database Schema**
+
+### **credentials table**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| gitset_key | TEXT | Primary authentication key |
+| user_email | TEXT | User identifier |
+| user_plan | TEXT | Subscription tier |
+| github_oauth_token | TEXT | GitHub integration |
+| created_at | DATETIME | Account creation timestamp |
+
+### **message_usage table**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| user_email | TEXT | User identifier |
+| created_at | DATETIME | Usage timestamp |
+
+Tracked per month for quota enforcement.
+
+---
+
+## **Workflow Examples**
+
+### **Basic Workflow**
+
+```bash
+# Authenticate
+gitset auth
+
+# Make changes to files
+git add file.js
+
+# Generate commit message
+gitset commit --staged
+
+# Copy and use the generated message
+git commit -m "feat(api): add user authentication endpoint"
+```
+
+### **Custom Template Workflow**
+
+```bash
+# Create custom template
+gitset template --sync
+# Enter your template format...
+# Press Ctrl+D when done
+
+# Use template for generation
+gitset commit --custom
+
+# View current template
+gitset template --show
+```
+
+### **Historical Analysis Workflow**
+
+```bash
+# Use last 15 commits for style learning
+gitset commit --historical --15
+
+# Combine with other modes
+gitset commit --all --historical --20
+gitset commit --staged --custom --historical
+```
+
+---
+
+## **Future Enhancements**
+
+### **Planned Tools**
+
+The template system is designed to support multiple tools:
+
+1. **Commit Message Generator** (Current)
+2. **Pull Request Maker** (Planned)
+3. **Issues Crafter** (Planned)
+4. **README Generator** (Planned)
+5. **Sync & Backup** (Planned)
+6. **Git Ignore Builder** (Planned)
+7. **Code Decommenter** (Planned)
+
+### **Upcoming Features**
+
+* NPM package publication
+* GitHub integration using OAuth tokens
+* Team collaboration features
+* IDE extensions and plugins
+* Advanced ML-based style learning
+* Multi-language support
+
+---
+
+## **Technical Details**
+
+### **Platform Compatibility**
+
+* **Operating Systems**: macOS, Linux, Windows
+* **Node.js**: v14+ required
+* **Git**: v2.0+ required
+
+### **Configuration Storage**
+
+* **Config location**: `~/.gitset/config.json`
+* **Template location**: `~/.gitset/COMMIT-MSG-TEMPLATE.md`
+* **Cross-platform**: Uses Node.js `os.homedir()` for path resolution
+
+### **API Integration**
+
+* **Endpoint**: `https://gitset-core-v2.vercel.app/api/engine`
+* **Method**: POST
+* **Authentication**: gitset_key in request body
+* **Rate limiting**: Plan-based monthly quotas
+
+### **AI Model**
+
+* **Model**: Gemini 2.5 Flash
+* **Provider**: Google Generative AI
+* **Fallback**: Multi-key rotation system
+* **Context**: Custom prompts with diff analysis
+
+---
+
+## **Security & Privacy**
+
+* API keys never stored in git repositories
+* User credentials encrypted in Turso
+* Local config stored securely in user home directory
+* OAuth tokens truncated in responses
+* No sensitive data in logs (production mode)
+
+---
+
+## **Development & Debugging**
+
+### **Historical Analysis Debug Mode**
+
+When using `--historical`, CLI logs:
+* Number of commits requested
+* Number of commits retrieved
+* Full list of commit messages analyzed
+
+Example output:
+```
+📊 Historical Analysis Debug:
+   Requested: 15 commits
+   Retrieved: 15 commits
+   Commits:
+      1. feat(auth): implement JWT authentication
+      2. fix(api): resolve CORS configuration issue
+      ...
+```
+
+This logging helps developers understand:
+* How commit history is retrieved
+* What context is provided to AI
+* Pattern analysis effectiveness
+
+Debug logs can be removed in production builds while maintaining full functionality.
+
+---
+
+## **Support & Resources**
+
+* **Documentation**: This file
+* **Backend Repository**: gitset-core-v2
+* **CLI Repository**: gitset-cli-npm
+* **Database**: Turso (LibSQL)
+* **AI Provider**: Google Gemini
+
+---
+
+## **Summary**
+
+Gitset provides intelligent, AI-powered commit message generation with:
+
+* **Three analysis modes**: unstaged, staged, all
+* **Custom templates**: Define your project's style
+* **Historical learning**: Learn from past commits
+* **Cross-platform**: Works on macOS, Linux, Windows
+* **Secure**: Key-based authentication with quota management
+* **Extensible**: Template system supports future tools
+* **Smart AI**: Gemini 2.5 Flash with fallback system
+
+The system combines local git analysis, cloud-based validation, and AI generation to create consistent, high-quality commit messages that follow Conventional Commits standards while respecting project-specific styles and patterns.
