@@ -67,15 +67,58 @@ async function authenticate() {
   });
 
   return new Promise((resolve) => {
-    rl.question('Ingresa tu GitSet Key: ', (key) => {
+    rl.question('Ingresa tu GitSet Key: ', async (key) => {
       rl.close();
-      if (key.trim()) {
-        saveConfig({ gitset_key: key.trim() });
-        log('✓ Autenticación guardada correctamente', 'green');
-        resolve(key.trim());
-      } else {
+      
+      if (!key.trim()) {
         log('✗ Key inválida', 'red');
         resolve(null);
+        return;
+      }
+
+      // Validar contra el backend
+      log('\n→ Validando con el servidor...', 'cyan');
+      
+      try {
+        const response = await fetch(`${BACKEND_URL}/validate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gitset_key: key.trim() })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.valid) {
+          // Guardar key y datos del usuario
+          saveConfig({
+            gitset_key: key.trim(),
+            user_email: data.user.user_email,
+            user_plan: data.user.user_plan,
+            github_token: data.user.github_oauth_token || null,
+            authenticated_at: new Date().toISOString()
+          });
+
+          log('\n✓ Autenticación exitosa\n', 'green');
+          log(`📧 Email: ${data.user.user_email}`, 'cyan');
+          log(`📦 Plan: ${data.user.user_plan}`, 'cyan');
+          if (data.user.github_oauth_token) {
+            log(`🔑 GitHub token: ${data.user.github_oauth_token.substring(0, 8)}...`, 'cyan');
+          }
+          log('');
+          
+          resolve(key.trim());
+        } else {
+          log('\n✗ GitSet Key inválida o no encontrada', 'red');
+          log('  Verifica que la key exista en la base de datos', 'yellow');
+          resolve(null);
+        }
+      } catch (error) {
+        log('\n✗ Error de conexión con el servidor', 'red');
+        log(`  ${error.message}`, 'yellow');
+        log('\n⚠️  Guardando key localmente (sin validar)', 'yellow');
+        
+        saveConfig({ gitset_key: key.trim() });
+        resolve(key.trim());
       }
     });
   });
@@ -282,6 +325,18 @@ function commandStatus() {
   log('\n=== GitSet Status ===', 'blue');
   log(`Autenticado: ${authenticated ? '✓ Sí' : '✗ No'}`, authenticated ? 'green' : 'red');
   
+  if (authenticated && config) {
+    log('\n👤 Usuario:', 'cyan');
+    log(`   Email: ${config.user_email || 'No disponible'}`, 'yellow');
+    log(`   Plan: ${config.user_plan || 'No disponible'}`, 'yellow');
+    if (config.github_token) {
+      log(`   GitHub token: ${config.github_token.substring(0, 8)}...`, 'yellow');
+    }
+    if (config.authenticated_at) {
+      log(`   Autenticado: ${new Date(config.authenticated_at).toLocaleString()}`, 'yellow');
+    }
+  }
+  
   const stagedFiles = getStagedFiles();
   const unstagedFiles = getUnstagedFiles();
   
@@ -319,10 +374,65 @@ function commandTree(dir = '.', prefix = '', maxDepth = 3, currentDepth = 0) {
   });
 }
 
+async function commandVerify() {
+  const gitsetKey = getGitsetKey();
+  
+  if (!gitsetKey) {
+    log('✗ No estás autenticado. Usa: gitset auth', 'red');
+    return;
+  }
+
+  log('\n🔍 Verificando conexión con GitSet...\n', 'cyan');
+  log(`→ Key: ${gitsetKey.substring(0, 12)}...`, 'blue');
+
+  try {
+    const response = await fetch(BACKEND_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gitset_key: gitsetKey,
+        changes: [{ file: 'test.js', status: 'M', before: 'a', after: 'b' }],
+        diff: 'test'
+      })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      log('✓ Conexión exitosa', 'green');
+      log(`✓ Usuario verificado`, 'green');
+      if (data.quota_info) {
+        log(`\n📊 Información de tu cuenta:`, 'cyan');
+        log(`   Plan: ${data.quota_info.plan}`, 'yellow');
+        log(`   Mensajes usados: ${data.quota_info.used}`, 'yellow');
+        log(`   Mensajes restantes: ${data.quota_info.remaining}`, 'yellow');
+      }
+    } else if (response.status === 401) {
+      log('✗ GitSet Key inválida', 'red');
+      log('  La key no existe en la base de datos', 'yellow');
+    } else if (response.status === 500) {
+      log('✗ Error del servidor', 'red');
+      log(`  Mensaje: ${data.message || 'Error desconocido'}`, 'yellow');
+      if (data.details) {
+        log(`  Detalles: ${data.details}`, 'yellow');
+      }
+    } else {
+      log(`✗ Error ${response.status}`, 'red');
+      log(`  ${data.error || data.message || 'Error desconocido'}`, 'yellow');
+    }
+  } catch (error) {
+    log('✗ Error de conexión', 'red');
+    log(`  ${error.message}`, 'yellow');
+  }
+
+  log('');
+}
+
 function showHelp() {
   log('\n🚀 GitSet CLI v2.0', 'blue');
   log('\nComandos disponibles:\n', 'cyan');
   log('  gitset auth              Autenticarse con GitSet Key', 'green');
+  log('  gitset verify            Verificar conexión con servidor', 'green');
   log('  gitset logout            Cerrar sesión', 'green');
   log('  gitset generate          Generar commit message (staged)', 'green');
   log('  gitset generate --all    Generar commit message (todos los cambios)', 'green');
@@ -341,6 +451,10 @@ async function main() {
   switch (command) {
     case 'auth':
       await commandAuth();
+      break;
+    
+    case 'verify':
+      await commandVerify();
       break;
     
     case 'logout':
