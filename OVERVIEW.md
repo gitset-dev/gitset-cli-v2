@@ -4,6 +4,87 @@
 
 ---
 
+## **Tree Visualization**
+
+### **Native Implementation**
+
+Gitset includes a built-in tree visualization that works without external dependencies:
+
+* **No installation required**: Works immediately without `brew` or `tree` command
+* **Cross-platform**: Functions on macOS, Linux, and Windows
+* **Pure JavaScript**: Native Node.js implementation
+
+### **Commands**
+
+#### **Basic Usage**
+
+```bash
+gitset tree
+```
+
+Displays complete project structure with all files and directories.
+
+#### **Exclude Directories**
+
+```bash
+gitset tree --flag /node_modules --flag .astro
+```
+
+Excludes specific folders from the tree visualization.
+
+#### **Exclude by Extension**
+
+```bash
+gitset tree --flag .png
+gitset tree --flag .md
+gitset tree --flag .jpg --flag .gif
+```
+
+Excludes all files matching the specified extensions throughout the entire directory tree.
+
+#### **Use .gitignore Patterns**
+
+```bash
+gitset tree --flag --gitignore
+```
+
+Automatically excludes all patterns defined in the project's `.gitignore` file.
+
+### **Pattern Matching**
+
+The tree command supports multiple pattern types:
+
+* **Directory patterns**: `/node_modules`, `/dist`, `.astro`
+* **Extension patterns**: `.png`, `.jpg`, `.md`
+* **File patterns**: `package-lock.json`, `yarn.lock`
+* **Gitignore patterns**: Automatically parsed from `.gitignore`
+
+### **Features**
+
+* Displays file and directory counts
+* Shows visual tree structure with Unicode characters
+* Recursively scans all subdirectories
+* Smart pattern matching for flexible filtering
+* Respects gitignore syntax (comments, leading slashes, wildcards)
+
+### **Example Output**
+
+```
+📂 Project structure:
+
+├── 📁 src
+│   ├── 📄 index.js
+│   └── 📁 utils
+│       └── 📄 helper.js
+├── 📁 tests
+│   └── 📄 main.test.js
+└── 📄 package.json
+
+2 directories, 4 files
+```
+
+---
+
 ## **System Architecture**
 
 ### **Core Components**
@@ -207,7 +288,9 @@ Returns to CLI:
 | Command | Description |
 |---------|-------------|
 | `gitset status` | View repository and auth status |
-| `gitset tree` | Display project structure |
+| `gitset tree` | Display complete project structure |
+| `gitset tree --flag PATTERN` | Exclude specific patterns |
+| `gitset tree --flag --gitignore` | Exclude all .gitignore patterns |
 | `gitset help` | Show available commands |
 
 ---
@@ -228,6 +311,15 @@ The CLI intelligently analyzes different repository states:
 * Custom template mode for consistent project style
 * Historical analysis learns from past commit patterns
 * Generates Conventional Commits format messages
+
+### **Native Tree Visualization**
+
+* **Zero dependencies**: No need for `brew` or external `tree` command
+* **Cross-platform**: Works on macOS, Linux, Windows
+* **Flexible filtering**: Exclude by directory, extension, or .gitignore
+* **Multiple patterns**: Combine multiple exclusions in single command
+* **Smart parsing**: Understands .gitignore syntax and patterns
+* **Visual output**: Unicode tree structure with icons
 
 ### **Template System**
 
@@ -292,6 +384,25 @@ gitset commit --staged
 
 # Copy and use the generated message
 git commit -m "feat(api): add user authentication endpoint"
+```
+
+### **Tree Visualization Workflow**
+
+```bash
+# View complete project structure
+gitset tree
+
+# Exclude common build directories
+gitset tree --flag /node_modules --flag /dist --flag /.next
+
+# Exclude specific file types
+gitset tree --flag .png --flag .jpg --flag .gif
+
+# Use .gitignore patterns for clean output
+gitset tree --flag --gitignore
+
+# Combine multiple exclusions
+gitset tree --flag /node_modules --flag .test.js --flag .spec.js
 ```
 
 ### **Custom Template Workflow**
@@ -433,9 +544,11 @@ Gitset provides intelligent, AI-powered commit message generation with:
 * **Three analysis modes**: unstaged, staged, all
 * **Custom templates**: Define your project's style
 * **Historical learning**: Learn from past commits
+* **Native tree visualization**: No external dependencies required
 * **Cross-platform**: Works on macOS, Linux, Windows
 * **Secure**: Key-based authentication with quota management
 * **Extensible**: Template system supports future tools
 * **Smart AI**: Gemini 2.5 Flash with fallback system
+* **Flexible filtering**: Advanced pattern matching for tree visualization
 
 The system combines local git analysis, cloud-based validation, and AI generation to create consistent, high-quality commit messages that follow Conventional Commits standards while respecting project-specific styles and patterns.
