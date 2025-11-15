@@ -1,0 +1,16 @@
+{
+  "name": "gitset-v2-cli",
+  "version": "1.0.0",
+  "description": "CLI para generar commit messages inteligentes",
+  "main": "index.js",
+  "bin": {
+    "gitset": "./index.js"
+  },
+  "scripts": {
+    "test": "node index.js"
+  },
+  "keywords": ["git", "cli", "commit", "ai"],
+  "author": "Tu Nombre",
+  "license": "MIT",
+  "dependencies": {}
+}
