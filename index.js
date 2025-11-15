@@ -393,31 +393,121 @@ function commandStatus() {
   unstagedFiles.forEach(f => log(`  ${f.status} ${f.file}`, 'yellow'));
 }
 
-function commandTree(dir = '.', prefix = '', maxDepth = 3, currentDepth = 0) {
-  if (currentDepth >= maxDepth) return;
-  
-  const items = fs.readdirSync(dir).filter(item => 
-    !item.startsWith('.') && 
-    item !== 'node_modules' && 
-    item !== 'dist' && 
-    item !== 'build'
-  );
+function parseGitignore() {
+  const gitignorePath = path.join(process.cwd(), '.gitignore');
+  if (!fs.existsSync(gitignorePath)) {
+    return [];
+  }
+
+  try {
+    const content = fs.readFileSync(gitignorePath, 'utf8');
+    return content
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('#'))
+      .map(pattern => {
+        if (pattern.startsWith('/')) {
+          return pattern.substring(1);
+        }
+        return pattern;
+      });
+  } catch {
+    return [];
+  }
+}
+
+function shouldExcludeItem(itemName, itemPath, excludePatterns, isDirectory) {
+  for (const pattern of excludePatterns) {
+    if (pattern.startsWith('/')) {
+      const cleanPattern = pattern.substring(1);
+      if (itemName === cleanPattern || itemPath.includes(`/${cleanPattern}`)) {
+        return true;
+      }
+    } else if (pattern.endsWith('/')) {
+      if (isDirectory && itemName === pattern.slice(0, -1)) {
+        return true;
+      }
+    } else if (pattern.startsWith('*.')) {
+      const ext = pattern.substring(1);
+      if (itemName.endsWith(ext)) {
+        return true;
+      }
+    } else if (pattern.startsWith('.')) {
+      if (itemName.endsWith(pattern)) {
+        return true;
+      }
+    } else {
+      if (itemName === pattern || itemPath.includes(`/${pattern}/`) || itemPath.endsWith(`/${pattern}`)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function commandTree(dir = '.', prefix = '', options = {}) {
+  const { 
+    maxDepth = 999, 
+    currentDepth = 0, 
+    excludePatterns = [],
+    stats = { dirs: 0, files: 0 }
+  } = options;
+
+  if (currentDepth >= maxDepth) return stats;
+
+  let items;
+  try {
+    items = fs.readdirSync(dir);
+  } catch {
+    return stats;
+  }
+
+  items = items.filter(item => {
+    if (item.startsWith('.') && item !== '.gitignore') {
+      return false;
+    }
+
+    const itemPath = path.join(dir, item);
+    const itemStats = fs.statSync(itemPath);
+    const isDirectory = itemStats.isDirectory();
+
+    const relativePath = path.relative(process.cwd(), itemPath);
+    
+    return !shouldExcludeItem(item, relativePath, excludePatterns, isDirectory);
+  });
 
   items.forEach((item, index) => {
     const isLast = index === items.length - 1;
     const itemPath = path.join(dir, item);
-    const stats = fs.statSync(itemPath);
+    let itemStats;
     
+    try {
+      itemStats = fs.statSync(itemPath);
+    } catch {
+      return;
+    }
+
+    const isDirectory = itemStats.isDirectory();
     const connector = isLast ? '└── ' : '├── ';
-    const icon = stats.isDirectory() ? '📁' : '📄';
+    const icon = isDirectory ? '📁' : '📄';
     
     console.log(`${prefix}${connector}${icon} ${item}`);
-    
-    if (stats.isDirectory()) {
+
+    if (isDirectory) {
+      stats.dirs++;
       const newPrefix = prefix + (isLast ? '    ' : '│   ');
-      commandTree(itemPath, newPrefix, maxDepth, currentDepth + 1);
+      commandTree(itemPath, newPrefix, {
+        maxDepth,
+        currentDepth: currentDepth + 1,
+        excludePatterns,
+        stats
+      });
+    } else {
+      stats.files++;
     }
   });
+
+  return stats;
 }
 
 async function commandVerify() {
@@ -562,19 +652,31 @@ function showHelp() {
   log('  gitset template --show    Display current template', 'green');
   log('  gitset template --delete  Remove template', 'green');
   
+  log('\nTREE VISUALIZATION:', 'magenta');
+  log('  gitset tree               Show complete project structure', 'green');
+  log('  gitset tree --flag /node_modules --flag .astro', 'green');
+  log('                            Exclude specific folders', 'green');
+  log('  gitset tree --flag .png   Exclude files by extension', 'green');
+  log('  gitset tree --flag .md    Exclude all .md files', 'green');
+  log('  gitset tree --flag --gitignore', 'green');
+  log('                            Exclude all patterns from .gitignore', 'green');
+  
   log('\nUTILITIES:', 'magenta');
   log('  gitset status             View repository status', 'green');
-  log('  gitset tree               Show project structure', 'green');
   log('  gitset help               Show this help', 'green');
   
   log('\nEXAMPLES:', 'magenta');
   log('  gitset commit --custom --historical --15', 'cyan');
   log('  gitset commit --all --historical', 'cyan');
   log('  gitset commit --staged --custom', 'cyan');
+  log('  gitset tree --flag /node_modules --flag /dist', 'cyan');
+  log('  gitset tree --flag .png --flag .jpg', 'cyan');
+  log('  gitset tree --flag --gitignore', 'cyan');
   
   log('\nNOTE:', 'yellow');
   log('  Historical range: 5-20 commits (default: 10)', 'yellow');
   log('  Template stored in: ~/.gitset/COMMIT-MSG-TEMPLATE.md', 'yellow');
+  log('  Tree works on all platforms without external dependencies', 'yellow');
   log('');
 }
 
@@ -628,11 +730,43 @@ async function main() {
       commandStatus();
       break;
     
-    case 'tree':
-      log('\n📂 Project structure:\n', 'blue');
-      commandTree();
-      log('');
+    case 'tree': {
+      const excludePatterns = [];
+      let useGitignore = false;
+
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--flag') {
+          if (args[i + 1] === '--gitignore') {
+            useGitignore = true;
+            i++;
+          } else if (args[i + 1]) {
+            const pattern = args[i + 1];
+            excludePatterns.push(pattern);
+            i++;
+          }
+        }
+      }
+
+      if (useGitignore) {
+        const gitignorePatterns = parseGitignore();
+        excludePatterns.push(...gitignorePatterns);
+        log('\n📂 Project structure (excluding .gitignore patterns):\n', 'blue');
+        log(`Loaded ${gitignorePatterns.length} patterns from .gitignore\n`, 'yellow');
+      } else if (excludePatterns.length > 0) {
+        log('\n📂 Project structure (with exclusions):\n', 'blue');
+        log(`Excluding: ${excludePatterns.join(', ')}\n`, 'yellow');
+      } else {
+        log('\n📂 Project structure:\n', 'blue');
+      }
+
+      const stats = commandTree('.', '', {
+        excludePatterns,
+        stats: { dirs: 0, files: 0 }
+      });
+      
+      log(`\n${stats.dirs} directories, ${stats.files} files\n`, 'cyan');
       break;
+    }
     
     case 'template':
       commandTemplate(args[1]);
