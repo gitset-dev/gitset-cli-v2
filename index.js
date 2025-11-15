@@ -6,12 +6,10 @@ const path = require('path');
 const os = require('os');
 const readline = require('readline');
 
-// Configuración
 const BACKEND_URL = 'https://gitset-core-v2.vercel.app/api/engine';
 const CONFIG_DIR = path.join(os.homedir(), '.gitset');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
-// Colores para terminal
 const colors = {
   reset: '\x1b[0m',
   green: '\x1b[32m',
@@ -21,7 +19,6 @@ const colors = {
   blue: '\x1b[34m'
 };
 
-// Utilidades
 function log(msg, color = 'reset') {
   console.log(`${colors[color]}${msg}${colors.reset}`);
 }
@@ -34,7 +31,6 @@ function execCommand(cmd) {
   }
 }
 
-// Gestión de configuración
 function ensureConfigDir() {
   if (!fs.existsSync(CONFIG_DIR)) {
     fs.mkdirSync(CONFIG_DIR, { recursive: true });
@@ -59,7 +55,6 @@ function isGitRepo() {
   return execCommand('git rev-parse --is-inside-work-tree') === 'true';
 }
 
-// Autenticación
 async function authenticate() {
   const rl = readline.createInterface({
     input: process.stdin,
@@ -67,17 +62,16 @@ async function authenticate() {
   });
 
   return new Promise((resolve) => {
-    rl.question('Ingresa tu GitSet Key: ', async (key) => {
+    rl.question('Enter your Gitset Key: ', async (key) => {
       rl.close();
       
       if (!key.trim()) {
-        log('✗ Key inválida', 'red');
+        log('✗ Invalid key', 'red');
         resolve(null);
         return;
       }
 
-      // Validar contra el backend
-      log('\n→ Validando con el servidor...', 'cyan');
+      log('\n→ Validating with server...', 'cyan');
       
       try {
         const response = await fetch(`${BACKEND_URL}/validate`, {
@@ -89,7 +83,6 @@ async function authenticate() {
         const data = await response.json();
 
         if (response.ok && data.valid) {
-          // Guardar key y datos del usuario
           saveConfig({
             gitset_key: key.trim(),
             user_email: data.user.user_email,
@@ -98,7 +91,7 @@ async function authenticate() {
             authenticated_at: new Date().toISOString()
           });
 
-          log('\n✓ Autenticación exitosa\n', 'green');
+          log('\n✓ Authentication successful\n', 'green');
           log(`📧 Email: ${data.user.user_email}`, 'cyan');
           log(`📦 Plan: ${data.user.user_plan}`, 'cyan');
           if (data.user.github_oauth_token) {
@@ -108,14 +101,14 @@ async function authenticate() {
           
           resolve(key.trim());
         } else {
-          log('\n✗ GitSet Key inválida o no encontrada', 'red');
-          log('  Verifica que la key exista en la base de datos', 'yellow');
+          log('\n✗ Invalid or not found Gitset Key', 'red');
+          log('  Verify the key exists in database', 'yellow');
           resolve(null);
         }
       } catch (error) {
-        log('\n✗ Error de conexión con el servidor', 'red');
+        log('\n✗ Server connection error', 'red');
         log(`  ${error.message}`, 'yellow');
-        log('\n⚠️  Guardando key localmente (sin validar)', 'yellow');
+        log('\n⚠️  Saving key locally (without validation)', 'yellow');
         
         saveConfig({ gitset_key: key.trim() });
         resolve(key.trim());
@@ -129,30 +122,46 @@ function getGitsetKey() {
   return config?.gitset_key || null;
 }
 
-// Git utilities
-function getGitDiff(staged = true) {
-  const cmd = staged ? 'git diff --cached' : 'git diff';
+function getGitDiff(mode = 'unstaged') {
+  let cmd;
+  if (mode === 'staged') {
+    cmd = 'git diff --cached';
+  } else if (mode === 'all') {
+    const staged = execCommand('git diff --cached') || '';
+    const unstaged = execCommand('git diff') || '';
+    return staged + '\n' + unstaged;
+  } else {
+    cmd = 'git diff';
+  }
   return execCommand(cmd) || '';
 }
 
-function getStagedFiles() {
-  const output = execCommand('git diff --cached --name-status');
+function getChangedFiles(mode = 'unstaged') {
+  let output;
+  
+  if (mode === 'staged') {
+    output = execCommand('git diff --cached --name-status');
+  } else if (mode === 'all') {
+    const staged = execCommand('git diff --cached --name-status') || '';
+    const unstaged = execCommand('git diff --name-status') || '';
+    output = [staged, unstaged].filter(Boolean).join('\n');
+  } else {
+    output = execCommand('git diff --name-status');
+  }
+  
   if (!output) return [];
   
-  return output.split('\n').map(line => {
-    const [status, ...filePathParts] = line.split('\t');
-    return { status, file: filePathParts.join('\t') };
-  });
-}
-
-function getUnstagedFiles() {
-  const output = execCommand('git diff --name-status');
-  if (!output) return [];
+  const fileMap = new Map();
   
-  return output.split('\n').map(line => {
+  output.split('\n').forEach(line => {
     const [status, ...filePathParts] = line.split('\t');
-    return { status, file: filePathParts.join('\t') };
+    const file = filePathParts.join('\t');
+    if (file) {
+      fileMap.set(file, { status, file });
+    }
   });
+  
+  return Array.from(fileMap.values());
 }
 
 function getFileContent(filepath, revision = 'HEAD') {
@@ -176,9 +185,8 @@ function getRecentCommits(count = 10) {
   return output ? output.split('\n') : [];
 }
 
-// Analizar cambios y preparar diff
-function prepareChangesData(staged = true) {
-  const files = staged ? getStagedFiles() : getUnstagedFiles();
+function prepareChangesData(mode = 'unstaged') {
+  const files = getChangedFiles(mode);
   
   if (files.length === 0) {
     return null;
@@ -189,13 +197,10 @@ function prepareChangesData(staged = true) {
     let after = '';
 
     if (status === 'A') {
-      // Archivo nuevo
       after = getCurrentFileContent(file);
     } else if (status === 'D') {
-      // Archivo eliminado
       before = getFileContent(file, 'HEAD');
     } else if (status === 'M') {
-      // Archivo modificado
       before = getFileContent(file, 'HEAD');
       after = getCurrentFileContent(file);
     }
@@ -208,7 +213,7 @@ function prepareChangesData(staged = true) {
     };
   });
 
-  const diff = getGitDiff(staged);
+  const diff = getGitDiff(mode);
   
   return {
     changes,
@@ -217,12 +222,11 @@ function prepareChangesData(staged = true) {
   };
 }
 
-// Comunicación con backend
 async function generateCommitMessage(changesData, customMode = false) {
   const gitsetKey = getGitsetKey();
   
   if (!gitsetKey) {
-    log('✗ No estás autenticado. Usa: gitset auth', 'red');
+    log('✗ Not authenticated. Use: gitset auth', 'red');
     return null;
   }
 
@@ -238,7 +242,7 @@ async function generateCommitMessage(changesData, customMode = false) {
   }
 
   try {
-    log('→ Generando commit message...', 'cyan');
+    log('→ Generating commit message...', 'cyan');
     
     const response = await fetch(BACKEND_URL, {
       method: 'POST',
@@ -249,65 +253,74 @@ async function generateCommitMessage(changesData, customMode = false) {
     const data = await response.json();
 
     if (!response.ok) {
-      log(`✗ Error: ${data.error || 'Error desconocido'}`, 'red');
+      log(`✗ Error: ${data.error || 'Unknown error'}`, 'red');
       return null;
     }
 
     return data;
   } catch (error) {
-    log(`✗ Error de conexión: ${error.message}`, 'red');
+    log(`✗ Connection error: ${error.message}`, 'red');
     return null;
   }
 }
 
-// Comandos CLI
 async function commandAuth() {
-  log('=== Autenticación GitSet ===', 'blue');
+  log('=== Gitset Authentication ===', 'blue');
   await authenticate();
 }
 
 function commandLogout() {
   if (fs.existsSync(CONFIG_FILE)) {
     fs.unlinkSync(CONFIG_FILE);
-    log('✓ Sesión cerrada correctamente', 'green');
+    log('✓ Session closed successfully', 'green');
   } else {
-    log('No hay sesión activa', 'yellow');
+    log('No active session', 'yellow');
   }
 }
 
-async function commandGenerate(options = {}) {
+async function commandCommit(options = {}) {
   if (!isGitRepo()) {
-    log('✗ No estás en un repositorio Git', 'red');
+    log('✗ Not in a Git repository', 'red');
     return;
   }
 
-  const staged = options.staged !== false;
+  let mode = 'unstaged';
+  let modeLabel = 'unstaged';
+  
+  if (options.staged) {
+    mode = 'staged';
+    modeLabel = 'staged only';
+  } else if (options.all) {
+    mode = 'all';
+    modeLabel = 'all changes';
+  }
+
   const customMode = options.custom || false;
 
-  log(`\n📊 Analizando cambios ${staged ? 'staged' : 'no staged'}...\n`, 'cyan');
+  log(`\n📊 Analyzing ${modeLabel} changes...\n`, 'cyan');
 
-  const changesData = prepareChangesData(staged);
+  const changesData = prepareChangesData(mode);
 
   if (!changesData) {
-    log('✗ No hay cambios para analizar', 'yellow');
+    log('✗ No changes to analyze', 'yellow');
     return;
   }
 
-  log(`→ Archivos detectados: ${changesData.files_count}`, 'blue');
+  log(`→ Files detected: ${changesData.files_count}`, 'blue');
 
   const result = await generateCommitMessage(changesData, customMode);
 
   if (result) {
-    log('\n✓ Commit message generado:\n', 'green');
+    log('\n✓ Commit message generated:\n', 'green');
     log(`📝 ${result.commit_message}\n`, 'cyan');
     
     if (result.quota_info) {
-      log('📈 Cuota de uso:', 'yellow');
+      log('📈 Usage quota:', 'yellow');
       log(`   Plan: ${result.quota_info.plan}`, 'yellow');
-      log(`   Consumidos: ${result.quota_info.used}`, 'yellow');
-      log(`   Restantes: ${result.quota_info.remaining}`, 'yellow');
+      log(`   Used: ${result.quota_info.used}`, 'yellow');
+      log(`   Remaining: ${result.quota_info.remaining}`, 'yellow');
       if (result.quota_info.renewable) {
-        log(`   Renovable: Sí (mensual)`, 'yellow');
+        log(`   Renewable: Yes (monthly)`, 'yellow');
       }
     }
   }
@@ -315,35 +328,35 @@ async function commandGenerate(options = {}) {
 
 function commandStatus() {
   if (!isGitRepo()) {
-    log('✗ No estás en un repositorio Git', 'red');
+    log('✗ Not in a Git repository', 'red');
     return;
   }
 
   const config = loadConfig();
   const authenticated = !!config?.gitset_key;
 
-  log('\n=== GitSet Status ===', 'blue');
-  log(`Autenticado: ${authenticated ? '✓ Sí' : '✗ No'}`, authenticated ? 'green' : 'red');
+  log('\n=== Gitset Status ===', 'blue');
+  log(`Authenticated: ${authenticated ? '✓ Yes' : '✗ No'}`, authenticated ? 'green' : 'red');
   
   if (authenticated && config) {
-    log('\n👤 Usuario:', 'cyan');
-    log(`   Email: ${config.user_email || 'No disponible'}`, 'yellow');
-    log(`   Plan: ${config.user_plan || 'No disponible'}`, 'yellow');
+    log('\n👤 User:', 'cyan');
+    log(`   Email: ${config.user_email || 'Not available'}`, 'yellow');
+    log(`   Plan: ${config.user_plan || 'Not available'}`, 'yellow');
     if (config.github_token) {
       log(`   GitHub token: ${config.github_token.substring(0, 8)}...`, 'yellow');
     }
     if (config.authenticated_at) {
-      log(`   Autenticado: ${new Date(config.authenticated_at).toLocaleString()}`, 'yellow');
+      log(`   Authenticated: ${new Date(config.authenticated_at).toLocaleString()}`, 'yellow');
     }
   }
   
-  const stagedFiles = getStagedFiles();
-  const unstagedFiles = getUnstagedFiles();
+  const stagedFiles = getChangedFiles('staged');
+  const unstagedFiles = getChangedFiles('unstaged');
   
-  log(`\nArchivos staged: ${stagedFiles.length}`, 'cyan');
+  log(`\nStaged files: ${stagedFiles.length}`, 'cyan');
   stagedFiles.forEach(f => log(`  ${f.status} ${f.file}`, 'green'));
   
-  log(`\nArchivos no staged: ${unstagedFiles.length}`, 'cyan');
+  log(`\nUnstaged files: ${unstagedFiles.length}`, 'cyan');
   unstagedFiles.forEach(f => log(`  ${f.status} ${f.file}`, 'yellow'));
 }
 
@@ -378,11 +391,11 @@ async function commandVerify() {
   const gitsetKey = getGitsetKey();
   
   if (!gitsetKey) {
-    log('✗ No estás autenticado. Usa: gitset auth', 'red');
+    log('✗ Not authenticated. Use: gitset auth', 'red');
     return;
   }
 
-  log('\n🔍 Verificando conexión con GitSet...\n', 'cyan');
+  log('\n🔍 Verifying connection with Gitset...\n', 'cyan');
   log(`→ Key: ${gitsetKey.substring(0, 12)}...`, 'blue');
 
   try {
@@ -399,29 +412,29 @@ async function commandVerify() {
     const data = await response.json();
 
     if (response.ok) {
-      log('✓ Conexión exitosa', 'green');
-      log(`✓ Usuario verificado`, 'green');
+      log('✓ Connection successful', 'green');
+      log(`✓ User verified`, 'green');
       if (data.quota_info) {
-        log(`\n📊 Información de tu cuenta:`, 'cyan');
+        log(`\n📊 Account information:`, 'cyan');
         log(`   Plan: ${data.quota_info.plan}`, 'yellow');
-        log(`   Mensajes usados: ${data.quota_info.used}`, 'yellow');
-        log(`   Mensajes restantes: ${data.quota_info.remaining}`, 'yellow');
+        log(`   Messages used: ${data.quota_info.used}`, 'yellow');
+        log(`   Messages remaining: ${data.quota_info.remaining}`, 'yellow');
       }
     } else if (response.status === 401) {
-      log('✗ GitSet Key inválida', 'red');
-      log('  La key no existe en la base de datos', 'yellow');
+      log('✗ Invalid Gitset Key', 'red');
+      log('  The key does not exist in the database', 'yellow');
     } else if (response.status === 500) {
-      log('✗ Error del servidor', 'red');
-      log(`  Mensaje: ${data.message || 'Error desconocido'}`, 'yellow');
+      log('✗ Server error', 'red');
+      log(`  Message: ${data.message || 'Unknown error'}`, 'yellow');
       if (data.details) {
-        log(`  Detalles: ${data.details}`, 'yellow');
+        log(`  Details: ${data.details}`, 'yellow');
       }
     } else {
       log(`✗ Error ${response.status}`, 'red');
-      log(`  ${data.error || data.message || 'Error desconocido'}`, 'yellow');
+      log(`  ${data.error || data.message || 'Unknown error'}`, 'yellow');
     }
   } catch (error) {
-    log('✗ Error de conexión', 'red');
+    log('✗ Connection error', 'red');
     log(`  ${error.message}`, 'yellow');
   }
 
@@ -429,21 +442,21 @@ async function commandVerify() {
 }
 
 function showHelp() {
-  log('\n🚀 GitSet CLI v2.0', 'blue');
-  log('\nComandos disponibles:\n', 'cyan');
-  log('  gitset auth              Autenticarse con GitSet Key', 'green');
-  log('  gitset verify            Verificar conexión con servidor', 'green');
-  log('  gitset logout            Cerrar sesión', 'green');
-  log('  gitset generate          Generar commit message (staged)', 'green');
-  log('  gitset generate --all    Generar commit message (todos los cambios)', 'green');
-  log('  gitset generate --custom Generar con análisis de historial', 'green');
-  log('  gitset status            Ver estado del repositorio', 'green');
-  log('  gitset tree              Mostrar estructura del proyecto', 'green');
-  log('  gitset help              Mostrar esta ayuda', 'green');
+  log('\n🚀 Gitset CLI v2.0', 'blue');
+  log('\nAvailable commands:\n', 'cyan');
+  log('  gitset auth               Authenticate with Gitset Key', 'green');
+  log('  gitset verify             Verify server connection', 'green');
+  log('  gitset logout             Close session', 'green');
+  log('  gitset commit             Generate commit message (unstaged changes)', 'green');
+  log('  gitset commit --staged    Generate commit message (staged only)', 'green');
+  log('  gitset commit --all       Generate commit message (all changes)', 'green');
+  log('  gitset commit --custom    Generate with history analysis', 'green');
+  log('  gitset status             View repository status', 'green');
+  log('  gitset tree               Show project structure', 'green');
+  log('  gitset help               Show this help', 'green');
   log('');
 }
 
-// CLI Principal
 async function main() {
   const args = process.argv.slice(2);
   const command = args[0];
@@ -461,13 +474,13 @@ async function main() {
       commandLogout();
       break;
     
-    case 'generate':
-    case 'gen':
+    case 'commit':
       const options = {
-        staged: !args.includes('--all'),
+        staged: args.includes('--staged'),
+        all: args.includes('--all'),
         custom: args.includes('--custom')
       };
-      await commandGenerate(options);
+      await commandCommit(options);
       break;
     
     case 'status':
@@ -475,7 +488,7 @@ async function main() {
       break;
     
     case 'tree':
-      log('\n📂 Estructura del proyecto:\n', 'blue');
+      log('\n📂 Project structure:\n', 'blue');
       commandTree();
       log('');
       break;
@@ -486,12 +499,12 @@ async function main() {
       break;
     
     default:
-      log(`✗ Comando desconocido: ${command}`, 'red');
+      log(`✗ Unknown command: ${command}`, 'red');
       showHelp();
   }
 }
 
 main().catch(err => {
-  log(`✗ Error fatal: ${err.message}`, 'red');
+  log(`✗ Fatal error: ${err.message}`, 'red');
   process.exit(1);
 });
