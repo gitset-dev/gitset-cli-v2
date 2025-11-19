@@ -423,13 +423,28 @@ async function commandCommit(options = {}) {
 
     if (action === 'commit') {
       try {
-        if (mode === 'all') execCommand('git add .');
-        execSync(`git commit -m "${currentMessage.replace(/"/g, '\\"')}"`, { stdio: 'inherit' });
-        log('✓ Commit successful!', 'green');
-        break;
+        // Stage files if they were analyzed (and thus part of the generated message)
+        if (mode !== 'staged') {
+          const filesToStage = files.map(f => f.file);
+          if (filesToStage.length > 0) {
+            const { spawnSync } = require('child_process');
+            spawnSync('git', ['add', ...filesToStage], { stdio: 'inherit' });
+          }
+        }
+
+        // Use spawnSync to avoid shell interpretation of backticks/quotes in the message
+        const { spawnSync } = require('child_process');
+        const commitResult = spawnSync('git', ['commit', '-m', currentMessage], { stdio: 'inherit' });
+
+        if (commitResult.status === 0) {
+          log('✓ Commit successful!', 'green');
+          break;
+        } else {
+          log('✗ Commit failed.', 'red');
+          // Don't break, let user try again or edit
+        }
       } catch (err) {
         log(`✗ Commit failed: ${err.message}`, 'red');
-        break;
       }
     }
 
@@ -440,8 +455,13 @@ async function commandCommit(options = {}) {
     if (action === 'copy') {
       // Simple clipboard copy for Mac (pbcopy)
       try {
-        execSync(`echo "${currentMessage.replace(/"/g, '\\"')}" | pbcopy`);
-        log('✓ Copied to clipboard!', 'green');
+        const { spawnSync } = require('child_process');
+        const pbcopy = spawnSync('pbcopy', { input: currentMessage });
+        if (pbcopy.status === 0) {
+          log('✓ Copied to clipboard!', 'green');
+        } else {
+          log('✗ Failed to copy to clipboard', 'red');
+        }
         await new Promise(r => setTimeout(r, 1000));
       } catch (e) {
         log('✗ Failed to copy to clipboard', 'red');
