@@ -796,6 +796,17 @@ function loadIssueTemplate() {
   return null;
 }
 
+function getAssignees() {
+  try {
+    // Fetch collaborators who can be assigned
+    const output = execCommand('gh api repos/:owner/:repo/collaborators --jq ".[].login"');
+    if (!output) return [];
+    return output.split('\n').filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 function getMilestones() {
   try {
     const output = execCommand('gh api repos/:owner/:repo/milestones --jq ".[].title"');
@@ -851,10 +862,9 @@ async function closeIssueInteractive() {
     const reason = await selectOption('Reason for closing:', [
       { label: 'Completed', value: 'completed' },
       { label: 'Not Planned', value: 'not planned' },
-      { label: 'Duplicate', value: 'duplicate' } // Note: gh issue close doesn't natively support 'duplicate' as a reason flag in all versions, usually it's --reason "not planned" or "completed". We'll map duplicate to not planned with a comment or just handle standard reasons.
+      { label: 'Duplicate', value: 'duplicate' }
     ]);
 
-    // GH CLI only supports 'completed' or 'not planned' for --reason
     const ghReason = reason === 'completed' ? 'completed' : 'not planned';
 
     try {
@@ -922,6 +932,7 @@ async function commandIssue(options = {}) {
   let currentLabels = [];
   let draftId = draft.draftId;
   let selectedMilestone = null;
+  let selectedAssignees = [];
 
   // Wizard Loop
   while (true) {
@@ -930,6 +941,7 @@ async function commandIssue(options = {}) {
     log(`\nTITLE: ${currentTitle}`, 'green');
     log(`\nLABELS: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'magenta');
     log(`MILESTONE: ${selectedMilestone || 'None'}`, 'magenta');
+    log(`ASSIGNEES: ${selectedAssignees.join(', ') || 'None'}`, 'magenta');
     log(`\nBODY PREVIEW:\n${currentBody.substring(0, 300)}...\n(Full body hidden for brevity)`, 'reset');
 
     const action = await selectOption('What would you like to do?', [
@@ -938,6 +950,7 @@ async function commandIssue(options = {}) {
       { label: 'Edit/Refine Description', value: 'body' },
       { label: 'Manage Labels', value: 'labels' },
       { label: 'Set Milestone', value: 'milestone' },
+      { label: 'Set Assignees', value: 'assignees' },
       { label: 'Save to File', value: 'save' },
       { label: 'Cancel', value: 'cancel' }
     ]);
@@ -972,6 +985,20 @@ async function commandIssue(options = {}) {
       }
     }
 
+    if (action === 'assignees') {
+      const assignees = getAssignees();
+      if (assignees.length === 0) {
+        log('No assignees found.', 'yellow');
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        log('\nAvailable Assignees:', 'cyan');
+        assignees.forEach((a, i) => log(`${i + 1}. ${a}`, 'reset'));
+        const selection = await askQuestion('Select assignees (numbers separated by comma, e.g. 1,2): ');
+        const indices = selection.split(',').map(s => parseInt(s.trim()) - 1);
+        selectedAssignees = indices.map(i => assignees[i]).filter(a => a);
+      }
+    }
+
     if (action === 'create') {
       log('\n→ Creating issue on GitHub...', 'cyan');
 
@@ -997,7 +1024,9 @@ async function commandIssue(options = {}) {
 
       const labelArgs = currentLabels.map(l => `-l "${l.name || l}"`).join(' ');
       const milestoneArg = selectedMilestone ? `-m "${selectedMilestone}"` : '';
-      const cmd = `gh issue create -t "${currentTitle}" -F "${tmpFile}" ${labelArgs} ${milestoneArg}`;
+      const assigneeArg = selectedAssignees.length > 0 ? `-a "${selectedAssignees.join(',')}"` : '';
+
+      const cmd = `gh issue create -t "${currentTitle}" -F "${tmpFile}" ${labelArgs} ${milestoneArg} ${assigneeArg}`;
 
       try {
         const url = execCommand(cmd);
