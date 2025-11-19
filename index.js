@@ -1935,6 +1935,13 @@ async function main() {
       break;
     }
 
+    case 'release': {
+      const commandRelease = require('./src/commands/release');
+      const config = loadConfig();
+      await commandRelease(config);
+      break;
+    }
+
     case 'template':
       commandTemplate(args[1]);
       break;
