@@ -147,14 +147,26 @@ async function commandRelease(config) {
         console.log(currentNotes);
         log('='.repeat(50));
 
-        const action = await askQuestion('\n[P]ublish  [R]efine  [E]dit Manually  [C]ancel: ');
+        // Use selectOption helper if available, or implement simple selection
+        // Assuming selectOption is available in scope or we need to pass it/import it.
+        // Since this is a separate module, we'll stick to simple input but format it better,
+        // OR better yet, we should export selectOption from index.js or utils.
+        // For now, let's improve the text prompt to match the style.
 
-        if (action.toLowerCase() === 'c') {
+        log('\nOptions:', 'magenta');
+        log('1. Publish Release', 'green');
+        log('2. Refine with AI', 'cyan');
+        log('3. Edit Manually', 'cyan');
+        log('4. Cancel', 'red');
+
+        const choice = await askQuestion('\nSelect option (1-4): ');
+
+        if (choice === '4') {
             log('Cancelled.', 'yellow');
             return;
         }
 
-        if (action.toLowerCase() === 'r') {
+        if (choice === '2') {
             const instruction = await askQuestion('Refinement instruction: ');
             log('Refining...', 'magenta');
             const refined = await generateReleaseNotes(commits, {
@@ -169,17 +181,24 @@ async function commandRelease(config) {
                 currentNotes = refined.release_notes;
                 version = refined.version_number;
             }
-        } else if (action.toLowerCase() === 'e') {
-            // Simple manual edit simulation (in real CLI would open editor)
+        } else if (choice === '3') {
             log('Manual editing not fully implemented in this demo environment.', 'yellow');
             await new Promise(r => setTimeout(r, 1000));
-        } else if (action.toLowerCase() === 'p') {
+        } else if (choice === '1') {
             break;
         }
     }
 
     // 5. Publish (Tag + Release)
     log('\n📦 Publishing...', 'cyan');
+
+    // Check GitHub Token FIRST
+    if (!config.github_token) {
+        log('⚠️  GitHub token not found in config.', 'yellow');
+        log('   We will create the local tag, but cannot create the GitHub Release.', 'yellow');
+        const proceed = await askQuestion('Proceed with local tag only? (y/n): ');
+        if (proceed.toLowerCase() !== 'y') return;
+    }
 
     // Create Tag
     try {
@@ -193,22 +212,16 @@ async function commandRelease(config) {
         return;
     }
 
-    // Create Release on GitHub
-    // Note: This requires GitHub Token. We'll use the one from config if available.
-    if (!config.github_token) {
-        log('⚠️  GitHub token not found in config. Cannot create GitHub Release automatically.', 'yellow');
-        log('   You can manually create the release on GitHub with the generated notes.', 'yellow');
-        return;
-    }
-
+    // Create Release via Backend (using stored credentials)
     try {
-        const response = await fetch(`https://api.github.com/repos/${repoInfo.owner}/${repoInfo.repo}/releases`, {
+        log('→ Creating GitHub Release...', 'magenta');
+        const response = await fetch(BACKEND_URL, {
             method: 'POST',
-            headers: {
-                'Authorization': `token ${config.github_token}`,
-                'Accept': 'application/vnd.github.v3+json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+                gitset_key: config.gitset_key,
+                action: 'publish',
+                repo_info: repoInfo,
                 tag_name: tagName,
                 name: tagName,
                 body: currentNotes,
@@ -217,13 +230,18 @@ async function commandRelease(config) {
             })
         });
 
-        if (response.ok) {
-            const data = await response.json();
+        const data = await response.json();
+
+        if (response.ok && data.success) {
             log(`\n✨ Release published successfully!`, 'green');
             log(`🔗 ${data.html_url}`, 'blue');
         } else {
-            const err = await response.json();
-            log(`✗ GitHub API Error: ${err.message}`, 'red');
+            if (response.status === 401) {
+                log(`✗ Auth Error: ${data.error}`, 'red');
+                log(`   Please run 'gitset auth' to update your credentials.`, 'yellow');
+            } else {
+                log(`✗ Release Error: ${data.error}`, 'red');
+            }
         }
     } catch (e) {
         log(`✗ Error publishing release: ${e.message}`, 'red');
