@@ -69,6 +69,22 @@ async function askQuestion(query) {
     }));
 }
 
+async function selectOption(question, options) {
+    log(`\n${question}`, 'reset');
+    options.forEach((opt, index) => {
+        log(`${index + 1}. ${opt.label}`, 'cyan');
+    });
+
+    while (true) {
+        const answer = await askQuestion('\nSelect option (number): ');
+        const num = parseInt(answer);
+        if (num > 0 && num <= options.length) {
+            return options[num - 1].value;
+        }
+        log('Invalid selection. Try again.', 'red');
+    }
+}
+
 async function generateReleaseNotes(commits, options, config) {
     try {
         const response = await fetch(BACKEND_URL, {
@@ -147,26 +163,19 @@ async function commandRelease(config) {
         console.log(currentNotes);
         log('='.repeat(50));
 
-        // Use selectOption helper if available, or implement simple selection
-        // Assuming selectOption is available in scope or we need to pass it/import it.
-        // Since this is a separate module, we'll stick to simple input but format it better,
-        // OR better yet, we should export selectOption from index.js or utils.
-        // For now, let's improve the text prompt to match the style.
+        const action = await selectOption('What would you like to do?', [
+            { label: 'Publish Release', value: 'publish' },
+            { label: 'Refine with AI', value: 'refine' },
+            { label: 'Edit Manually', value: 'edit' },
+            { label: 'Cancel', value: 'cancel' }
+        ]);
 
-        log('\nOptions:', 'magenta');
-        log('1. Publish Release', 'green');
-        log('2. Refine with AI', 'cyan');
-        log('3. Edit Manually', 'cyan');
-        log('4. Cancel', 'red');
-
-        const choice = await askQuestion('\nSelect option (1-4): ');
-
-        if (choice === '4') {
+        if (action === 'cancel') {
             log('Cancelled.', 'yellow');
             return;
         }
 
-        if (choice === '2') {
+        if (action === 'refine') {
             const instruction = await askQuestion('Refinement instruction: ');
             log('Refining...', 'magenta');
             const refined = await generateReleaseNotes(commits, {
@@ -181,10 +190,10 @@ async function commandRelease(config) {
                 currentNotes = refined.release_notes;
                 version = refined.version_number;
             }
-        } else if (choice === '3') {
+        } else if (action === 'edit') {
             log('Manual editing not fully implemented in this demo environment.', 'yellow');
             await new Promise(r => setTimeout(r, 1000));
-        } else if (choice === '1') {
+        } else if (action === 'publish') {
             break;
         }
     }
