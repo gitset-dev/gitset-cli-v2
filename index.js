@@ -993,6 +993,35 @@ npm start
   } else {
     log('ℹ README template already exists', 'yellow');
   }
+
+  // Release Template
+  const releaseTemplatePath = path.join(CONFIG_DIR, 'RELEASE-TEMPLATE.md');
+  const releaseBoilerplate = `## 🎉 What's New
+
+### ✨ Features
+- Feature 1
+- Feature 2
+
+### 🐛 Bug Fixes
+- Fix 1
+- Fix 2
+
+### 💥 Breaking Changes
+- Change 1
+
+### 📝 Documentation
+- Doc update 1
+
+### 🙏 Contributors
+- @username
+`;
+
+  if (!fs.existsSync(releaseTemplatePath)) {
+    fs.writeFileSync(releaseTemplatePath, releaseBoilerplate);
+    log('✓ Created Release template: ~/.gitset/RELEASE-TEMPLATE.md', 'green');
+  } else {
+    log('ℹ Release template already exists', 'yellow');
+  }
 }
 
 // --- Issue Crafter Helpers ---
