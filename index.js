@@ -449,6 +449,38 @@ async function commandCommit(options = {}) {
 
         if (commitResult.status === 0) {
           log('✓ Commit successful!', 'green');
+
+          const pushAction = await selectOption('Push changes to remote?', [
+            { label: 'Yes, push', value: 'yes' },
+            { label: 'No, skip', value: 'no' }
+          ]);
+
+          if (pushAction === 'yes') {
+            try {
+              log('→ Pushing...', 'cyan');
+              const { spawnSync } = require('child_process');
+              const pushRes = spawnSync('git', ['push'], { stdio: 'inherit' });
+
+              if (pushRes.status === 0) {
+                log('✓ Push successful!', 'green');
+
+                const syncAction = await selectOption('Sync (pull --rebase)?', [
+                  { label: 'Yes, sync', value: 'yes' },
+                  { label: 'No, skip', value: 'no' }
+                ]);
+
+                if (syncAction === 'yes') {
+                  log('→ Syncing...', 'cyan');
+                  spawnSync('git', ['pull', '--rebase'], { stdio: 'inherit' });
+                  log('✓ Sync complete', 'green');
+                }
+              } else {
+                log('✗ Push failed', 'red');
+              }
+            } catch (e) {
+              log(`✗ Push failed: ${e.message}`, 'red');
+            }
+          }
           break;
         } else {
           log('✗ Commit failed.', 'red');
@@ -789,49 +821,33 @@ function showHelp() {
   log('\n🚀 Gitset CLI v2.1', 'blue');
   log('\nAvailable commands:\n', 'cyan');
 
-  log('AUTHENTICATION:', 'magenta');
+  log('SETUP & AUTH:', 'magenta');
+  log('  gitset init               Initialize Gitset templates in project', 'green');
   log('  gitset auth               Authenticate with Gitset Key', 'green');
   log('  gitset verify             Verify server connection', 'green');
   log('  gitset logout             Close session', 'green');
 
-  log('\nCOMMIT GENERATION:', 'magenta');
+  log('\nCORE WORKFLOW:', 'magenta');
   log('  gitset commit             Generate commit message (unstaged changes)', 'green');
   log('  gitset commit --staged    Generate commit message (staged only)', 'green');
   log('  gitset commit --all       Generate commit message (all changes)', 'green');
-  log('  gitset commit --custom    Use custom template for generation', 'green');
-  log('  gitset commit --historical --N   Use last N commits for style (5-20)', 'green');
-  log('  gitset commit --historical       Use last 10 commits (default)', 'green');
+  log('  gitset issue              Create a new issue with AI assistance', 'green');
+  log('  gitset pr                 Create a Pull Request with AI assistance', 'green');
+  log('  gitset release            Manage releases and tags (Unified)', 'green');
 
-  log('\nTEMPLATE MANAGEMENT:', 'magenta');
-  log('  gitset template --sync    Create/update commit message template', 'green');
-  log('  gitset template --show    Display current template', 'green');
-  log('  gitset template --delete  Remove template', 'green');
+  log('\nOPTIONS:', 'magenta');
+  log('  --custom                  Use custom template (commit, issue, pr)', 'green');
+  log('  --historical              Use commit history for style matching', 'green');
+  log('  --close                   Close an issue interactively (gitset issue --close)', 'green');
 
   log('\nTREE VISUALIZATION:', 'magenta');
-  log('  gitset tree               Show complete project structure', 'green');
-  log('  gitset tree --flag /node_modules --flag .astro', 'green');
-  log('                            Exclude specific folders', 'green');
-  log('  gitset tree --flag .png   Exclude files by extension', 'green');
-  log('  gitset tree --flag .md    Exclude all .md files', 'green');
-  log('  gitset tree --flag --gitignore', 'green');
-  log('                            Exclude all patterns from .gitignore', 'green');
+  log('  gitset tree               Show project structure', 'green');
+  log('  gitset tree --flag ...    Exclude folders/extensions', 'green');
 
   log('\nUTILITIES:', 'magenta');
   log('  gitset status             View repository status', 'green');
+  log('  gitset template --sync    Sync templates', 'green');
   log('  gitset help               Show this help', 'green');
-
-  log('\nEXAMPLES:', 'magenta');
-  log('  gitset commit --custom --historical --15', 'cyan');
-  log('  gitset commit --all --historical', 'cyan');
-  log('  gitset commit --staged --custom', 'cyan');
-  log('  gitset tree --flag /node_modules --flag /dist', 'cyan');
-  log('  gitset tree --flag .png --flag .jpg', 'cyan');
-  log('  gitset tree --flag --gitignore', 'cyan');
-
-  log('\nNOTE:', 'yellow');
-  log('  Historical range: 5-20 commits (default: 10)', 'yellow');
-  log('  Template stored in: ~/.gitset/COMMIT-MSG-TEMPLATE.md', 'yellow');
-  log('  Tree works on all platforms without external dependencies', 'yellow');
   log('');
 }
 
@@ -1247,6 +1263,7 @@ async function commandPR(options = {}) {
 
     const action = await selectOption('What would you like to do?', [
       { label: 'Confirm & Create PR', value: 'create' },
+      { label: 'View Full Content', value: 'view_full' },
       { label: 'Edit/Refine Title', value: 'title' },
       { label: 'Edit/Refine Description', value: 'body' },
       { label: 'Manage Labels', value: 'labels' },
@@ -1257,6 +1274,17 @@ async function commandPR(options = {}) {
       { label: 'Save to File', value: 'save' },
       { label: 'Cancel', value: 'cancel' }
     ]);
+
+    if (action === 'view_full') {
+      console.clear();
+      log('=== PR Full Content ===', 'blue');
+      log(`TITLE: ${currentTitle}`, 'green');
+      log('-'.repeat(50));
+      console.log(currentBody);
+      log('-'.repeat(50));
+      await askQuestion('Press Enter to return...');
+      continue;
+    }
 
     if (action === 'cancel') {
       log('Cancelled.', 'yellow');
@@ -1483,6 +1511,10 @@ async function commandIssue(options = {}) {
       { label: 'Save to File', value: 'save' },
       { label: 'Cancel', value: 'cancel' }
     ]);
+
+    if (action === 'labels') {
+      currentLabels = await manageLabels(currentLabels);
+    }
 
     if (action === 'cancel') {
       log('Cancelled.', 'yellow');
