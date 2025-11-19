@@ -1,4 +1,3 @@
-```markdown
 ## Gitset CLI
 
 [![License](https://img.shields.io/badge/license-MPL_2.0-blue)](https://github.com/imprvhub/gitset-cli-v2/blob/main/LICENSE)
@@ -170,4 +169,3 @@ We welcome contributions! If you have suggestions, bug reports, or want to contr
 ### License
 
 This project is licensed under the Mozilla Public License 2.0. See the [LICENSE](https://github.com/imprvhub/gitset-cli-v2/blob/main/LICENSE) file for details.
-```
