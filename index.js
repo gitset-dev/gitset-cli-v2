@@ -784,6 +784,60 @@ Explain the technical details.
   } else {
     log('ℹ Issue template already exists', 'yellow');
   }
+
+  // PR Template
+  const prTemplatePath = path.join(CONFIG_DIR, 'PR-TEMPLATE.md');
+  const prBoilerplate = `## Type of Change
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
+
+## Description
+Briefly describe the changes.
+
+## Related Issues
+Fixes #
+
+## Testing
+- [ ] Unit tests passed
+- [ ] Manual testing verified
+`;
+
+  if (!fs.existsSync(prTemplatePath)) {
+    fs.writeFileSync(prTemplatePath, prBoilerplate);
+    log('✓ Created PR template: ~/.gitset/PR-TEMPLATE.md', 'green');
+  } else {
+    log('ℹ PR template already exists', 'yellow');
+  }
+
+  // README Template
+  const readmeTemplatePath = path.join(CONFIG_DIR, 'README-TEMPLATE.md');
+  const readmeBoilerplate = `# {{PROJECT_NAME}}
+
+{{DESCRIPTION}}
+
+## Features
+- Feature 1
+- Feature 2
+
+## Installation
+\`\`\`bash
+npm install
+\`\`\`
+
+## Usage
+\`\`\`bash
+npm start
+\`\`\`
+`;
+
+  if (!fs.existsSync(readmeTemplatePath)) {
+    fs.writeFileSync(readmeTemplatePath, readmeBoilerplate);
+    log('✓ Created README template: ~/.gitset/README-TEMPLATE.md', 'green');
+  } else {
+    log('ℹ README template already exists', 'yellow');
+  }
 }
 
 // --- Issue Crafter Helpers ---
