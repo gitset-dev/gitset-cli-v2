@@ -505,415 +505,414 @@ async function commandCommit(options = {}) {
       });
 
       if (refineResult) {
-        if (refineResult) {
-          currentMessage = refineResult.commit_message;
-          usage = refineResult.usage;
-          currentDraftId = refineResult.draft_id;
-          currentVersion = refineResult.version_number;
-        }
+        currentMessage = refineResult.commit_message;
+        usage = refineResult.usage;
+        currentDraftId = refineResult.draft_id;
+        currentVersion = refineResult.version_number;
       }
     }
   }
+}
 
-  function commandStatus() {
-    if (!isGitRepo()) {
-      log('✗ Not in a Git repository', 'red');
-      return;
-    }
-
-    const config = loadConfig();
-    const authenticated = !!config?.gitset_key;
-
-    log('\n=== Gitset Status ===', 'blue');
-    log(`Authenticated: ${authenticated ? '✓ Yes' : '✗ No'}`, authenticated ? 'green' : 'red');
-
-    if (authenticated && config) {
-      log('\n👤 User:', 'cyan');
-      log(`   Email: ${config.user_email || 'Not available'}`, 'yellow');
-      log(`   Plan: ${config.user_plan || 'Not available'}`, 'yellow');
-      if (config.github_token) {
-        log(`   GitHub token: ${config.github_token.substring(0, 8)}...`, 'yellow');
-      }
-      if (config.authenticated_at) {
-        log(`   Authenticated: ${new Date(config.authenticated_at).toLocaleString()}`, 'yellow');
-      }
-    }
-
-    const stagedFiles = getChangedFiles('staged');
-    const unstagedFiles = getChangedFiles('unstaged');
-
-    log(`\nStaged files: ${stagedFiles.length}`, 'cyan');
-    stagedFiles.forEach(f => log(`  ${f.status} ${f.file}`, 'green'));
-
-    log(`\nUnstaged files: ${unstagedFiles.length}`, 'cyan');
-    unstagedFiles.forEach(f => log(`  ${f.status} ${f.file}`, 'yellow'));
+function commandStatus() {
+  if (!isGitRepo()) {
+    log('✗ Not in a Git repository', 'red');
+    return;
   }
 
-  function parseGitignore() {
-    const gitignorePath = path.join(process.cwd(), '.gitignore');
-    if (!fs.existsSync(gitignorePath)) {
-      return [];
-    }
+  const config = loadConfig();
+  const authenticated = !!config?.gitset_key;
 
-    try {
-      const content = fs.readFileSync(gitignorePath, 'utf8');
-      return content
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line && !line.startsWith('#'))
-        .map(pattern => {
-          if (pattern.startsWith('/')) {
-            return pattern.substring(1);
-          }
-          return pattern;
-        });
-    } catch {
-      return [];
+  log('\n=== Gitset Status ===', 'blue');
+  log(`Authenticated: ${authenticated ? '✓ Yes' : '✗ No'}`, authenticated ? 'green' : 'red');
+
+  if (authenticated && config) {
+    log('\n👤 User:', 'cyan');
+    log(`   Email: ${config.user_email || 'Not available'}`, 'yellow');
+    log(`   Plan: ${config.user_plan || 'Not available'}`, 'yellow');
+    if (config.github_token) {
+      log(`   GitHub token: ${config.github_token.substring(0, 8)}...`, 'yellow');
+    }
+    if (config.authenticated_at) {
+      log(`   Authenticated: ${new Date(config.authenticated_at).toLocaleString()}`, 'yellow');
     }
   }
 
-  function shouldExcludeItem(itemName, itemPath, excludePatterns, isDirectory) {
-    for (const pattern of excludePatterns) {
-      if (pattern.startsWith('/')) {
-        const cleanPattern = pattern.substring(1);
-        if (itemName === cleanPattern || itemPath.includes(`/${cleanPattern}`)) {
-          return true;
-        }
-      } else if (pattern.endsWith('/')) {
-        if (isDirectory && itemName === pattern.slice(0, -1)) {
-          return true;
-        }
-      } else if (pattern.startsWith('*.')) {
-        const ext = pattern.substring(1);
-        if (itemName.endsWith(ext)) {
-          return true;
-        }
-      } else if (pattern.startsWith('.')) {
-        if (itemName.endsWith(pattern)) {
-          return true;
-        }
-      } else {
-        if (itemName === pattern || itemPath.includes(`/${pattern}/`) || itemPath.endsWith(`/${pattern}`)) {
-          return true;
-        }
-      }
-    }
-    return false;
+  const stagedFiles = getChangedFiles('staged');
+  const unstagedFiles = getChangedFiles('unstaged');
+
+  log(`\nStaged files: ${stagedFiles.length}`, 'cyan');
+  stagedFiles.forEach(f => log(`  ${f.status} ${f.file}`, 'green'));
+
+  log(`\nUnstaged files: ${unstagedFiles.length}`, 'cyan');
+  unstagedFiles.forEach(f => log(`  ${f.status} ${f.file}`, 'yellow'));
+}
+
+function parseGitignore() {
+  const gitignorePath = path.join(process.cwd(), '.gitignore');
+  if (!fs.existsSync(gitignorePath)) {
+    return [];
   }
 
-  function commandTree(dir = '.', prefix = '', options = {}) {
-    const {
-      maxDepth = 999,
-      currentDepth = 0,
-      excludePatterns = [],
-      stats = { dirs: 0, files: 0 }
-    } = options;
+  try {
+    const content = fs.readFileSync(gitignorePath, 'utf8');
+    return content
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('#'))
+      .map(pattern => {
+        if (pattern.startsWith('/')) {
+          return pattern.substring(1);
+        }
+        return pattern;
+      });
+  } catch {
+    return [];
+  }
+}
 
-    if (currentDepth >= maxDepth) return stats;
-
-    let items;
-    try {
-      items = fs.readdirSync(dir);
-    } catch {
-      return stats;
+function shouldExcludeItem(itemName, itemPath, excludePatterns, isDirectory) {
+  for (const pattern of excludePatterns) {
+    if (pattern.startsWith('/')) {
+      const cleanPattern = pattern.substring(1);
+      if (itemName === cleanPattern || itemPath.includes(`/${cleanPattern}`)) {
+        return true;
+      }
+    } else if (pattern.endsWith('/')) {
+      if (isDirectory && itemName === pattern.slice(0, -1)) {
+        return true;
+      }
+    } else if (pattern.startsWith('*.')) {
+      const ext = pattern.substring(1);
+      if (itemName.endsWith(ext)) {
+        return true;
+      }
+    } else if (pattern.startsWith('.')) {
+      if (itemName.endsWith(pattern)) {
+        return true;
+      }
+    } else {
+      if (itemName === pattern || itemPath.includes(`/${pattern}/`) || itemPath.endsWith(`/${pattern}`)) {
+        return true;
+      }
     }
+  }
+  return false;
+}
 
-    items = items.filter(item => {
-      if (item.startsWith('.') && item !== '.gitignore') {
-        return false;
-      }
+function commandTree(dir = '.', prefix = '', options = {}) {
+  const {
+    maxDepth = 999,
+    currentDepth = 0,
+    excludePatterns = [],
+    stats = { dirs: 0, files: 0 }
+  } = options;
 
-      const itemPath = path.join(dir, item);
-      const itemStats = fs.statSync(itemPath);
-      const isDirectory = itemStats.isDirectory();
+  if (currentDepth >= maxDepth) return stats;
 
-      const relativePath = path.relative(process.cwd(), itemPath);
-
-      return !shouldExcludeItem(item, relativePath, excludePatterns, isDirectory);
-    });
-
-    items.forEach((item, index) => {
-      const isLast = index === items.length - 1;
-      const itemPath = path.join(dir, item);
-      let itemStats;
-
-      try {
-        itemStats = fs.statSync(itemPath);
-      } catch {
-        return;
-      }
-
-      const isDirectory = itemStats.isDirectory();
-      const connector = isLast ? '└── ' : '├── ';
-      const icon = isDirectory ? '📁' : '📄';
-
-      console.log(`${prefix}${connector}${icon} ${item}`);
-
-      if (isDirectory) {
-        stats.dirs++;
-        const newPrefix = prefix + (isLast ? '    ' : '│   ');
-        commandTree(itemPath, newPrefix, {
-          maxDepth,
-          currentDepth: currentDepth + 1,
-          excludePatterns,
-          stats
-        });
-      } else {
-        stats.files++;
-      }
-    });
-
+  let items;
+  try {
+    items = fs.readdirSync(dir);
+  } catch {
     return stats;
   }
 
-  async function commandVerify() {
-    const gitsetKey = getGitsetKey();
+  items = items.filter(item => {
+    if (item.startsWith('.') && item !== '.gitignore') {
+      return false;
+    }
 
-    if (!gitsetKey) {
-      log('✗ Not authenticated. Use: gitset auth', 'red');
+    const itemPath = path.join(dir, item);
+    const itemStats = fs.statSync(itemPath);
+    const isDirectory = itemStats.isDirectory();
+
+    const relativePath = path.relative(process.cwd(), itemPath);
+
+    return !shouldExcludeItem(item, relativePath, excludePatterns, isDirectory);
+  });
+
+  items.forEach((item, index) => {
+    const isLast = index === items.length - 1;
+    const itemPath = path.join(dir, item);
+    let itemStats;
+
+    try {
+      itemStats = fs.statSync(itemPath);
+    } catch {
       return;
     }
 
-    log('\n🔍 Verifying connection with Gitset...\n', 'cyan');
-    log(`→ Key: ${gitsetKey.substring(0, 12)}...`, 'blue');
+    const isDirectory = itemStats.isDirectory();
+    const connector = isLast ? '└── ' : '├── ';
+    const icon = isDirectory ? '📁' : '📄';
 
-    try {
-      const response = await fetch(BACKEND_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gitset_key: gitsetKey,
-          changes: [{ file: 'test.js', status: 'M', before: 'a', after: 'b' }],
-          diff: 'test'
-        })
+    console.log(`${prefix}${connector}${icon} ${item}`);
+
+    if (isDirectory) {
+      stats.dirs++;
+      const newPrefix = prefix + (isLast ? '    ' : '│   ');
+      commandTree(itemPath, newPrefix, {
+        maxDepth,
+        currentDepth: currentDepth + 1,
+        excludePatterns,
+        stats
       });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        log('✓ Connection successful', 'green');
-        log(`✓ User verified`, 'green');
-        if (data.quota_info) {
-          log(`\n📊 Account information:`, 'cyan');
-          log(`   Plan: ${data.quota_info.plan}`, 'yellow');
-          log(`   Messages used: ${data.quota_info.used}`, 'yellow');
-          log(`   Messages remaining: ${data.quota_info.remaining}`, 'yellow');
-        }
-      } else if (response.status === 401) {
-        log('✗ Invalid Gitset Key', 'red');
-        log('  The key does not exist in the database', 'yellow');
-      } else if (response.status === 500) {
-        log('✗ Server error', 'red');
-        log(`  Message: ${data.message || 'Unknown error'}`, 'yellow');
-        if (data.details) {
-          log(`  Details: ${data.details}`, 'yellow');
-        }
-      } else {
-        log(`✗ Error ${response.status}`, 'red');
-        log(`  ${data.error || data.message || 'Unknown error'}`, 'yellow');
-      }
-    } catch (error) {
-      log('✗ Connection error', 'red');
-      log(`  ${error.message}`, 'yellow');
-    }
-
-    log('');
-  }
-
-  function commandTemplate(action) {
-    ensureConfigDir();
-
-    if (!action || action === '--sync') {
-      const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout
-      });
-
-      log('\n=== Gitset Template Manager ===', 'blue');
-      log('Create a custom commit message template\n', 'cyan');
-      log('Example template structure:', 'yellow');
-      log('---', 'yellow');
-      log('type(scope): brief description', 'yellow');
-      log('', 'yellow');
-      log('- Use present tense', 'yellow');
-      log('- Keep first line under 72 characters', 'yellow');
-      log('- Add detailed context if needed', 'yellow');
-      log('---\n', 'yellow');
-
-      const lines = [];
-
-      log('Enter your template (press Ctrl+D or Ctrl+Z when done):\n', 'cyan');
-
-      rl.on('line', (line) => {
-        lines.push(line);
-      });
-
-      rl.on('close', () => {
-        if (lines.length === 0) {
-          log('\n✗ No template provided', 'red');
-          return;
-        }
-
-        const template = lines.join('\n');
-        fs.writeFileSync(TEMPLATE_FILE, template, 'utf8');
-
-        log('\n✓ Template saved successfully', 'green');
-        log(`📁 Location: ${TEMPLATE_FILE}`, 'cyan');
-        log(`\nUse with: gitset commit --custom\n`, 'yellow');
-      });
-    } else if (action === '--show') {
-      if (!fs.existsSync(TEMPLATE_FILE)) {
-        log('✗ No template found', 'red');
-        log('  Create one with: gitset template --sync', 'yellow');
-        return;
-      }
-
-      const template = fs.readFileSync(TEMPLATE_FILE, 'utf8');
-      log('\n=== Current Template ===', 'blue');
-      log(template, 'cyan');
-      log('');
-    } else if (action === '--delete') {
-      if (!fs.existsSync(TEMPLATE_FILE)) {
-        log('✗ No template to delete', 'red');
-        return;
-      }
-
-      fs.unlinkSync(TEMPLATE_FILE);
-      log('✓ Template deleted successfully', 'green');
     } else {
-      log('✗ Invalid template command', 'red');
-      log('  Available: --sync, --show, --delete', 'yellow');
+      stats.files++;
     }
+  });
+
+  return stats;
+}
+
+async function commandVerify() {
+  const gitsetKey = getGitsetKey();
+
+  if (!gitsetKey) {
+    log('✗ Not authenticated. Use: gitset auth', 'red');
+    return;
   }
 
-  function showHelp() {
-    log('\n🚀 Gitset CLI v2.1', 'blue');
-    log('\nAvailable commands:\n', 'cyan');
+  log('\n🔍 Verifying connection with Gitset...\n', 'cyan');
+  log(`→ Key: ${gitsetKey.substring(0, 12)}...`, 'blue');
 
-    log('AUTHENTICATION:', 'magenta');
-    log('  gitset auth               Authenticate with Gitset Key', 'green');
-    log('  gitset verify             Verify server connection', 'green');
-    log('  gitset logout             Close session', 'green');
-
-    log('\nCOMMIT GENERATION:', 'magenta');
-    log('  gitset commit             Generate commit message (unstaged changes)', 'green');
-    log('  gitset commit --staged    Generate commit message (staged only)', 'green');
-    log('  gitset commit --all       Generate commit message (all changes)', 'green');
-    log('  gitset commit --custom    Use custom template for generation', 'green');
-    log('  gitset commit --historical --N   Use last N commits for style (5-20)', 'green');
-    log('  gitset commit --historical       Use last 10 commits (default)', 'green');
-
-    log('\nTEMPLATE MANAGEMENT:', 'magenta');
-    log('  gitset template --sync    Create/update commit message template', 'green');
-    log('  gitset template --show    Display current template', 'green');
-    log('  gitset template --delete  Remove template', 'green');
-
-    log('\nTREE VISUALIZATION:', 'magenta');
-    log('  gitset tree               Show complete project structure', 'green');
-    log('  gitset tree --flag /node_modules --flag .astro', 'green');
-    log('                            Exclude specific folders', 'green');
-    log('  gitset tree --flag .png   Exclude files by extension', 'green');
-    log('  gitset tree --flag .md    Exclude all .md files', 'green');
-    log('  gitset tree --flag --gitignore', 'green');
-    log('                            Exclude all patterns from .gitignore', 'green');
-
-    log('\nUTILITIES:', 'magenta');
-    log('  gitset status             View repository status', 'green');
-    log('  gitset help               Show this help', 'green');
-
-    log('\nEXAMPLES:', 'magenta');
-    log('  gitset commit --custom --historical --15', 'cyan');
-    log('  gitset commit --all --historical', 'cyan');
-    log('  gitset commit --staged --custom', 'cyan');
-    log('  gitset tree --flag /node_modules --flag /dist', 'cyan');
-    log('  gitset tree --flag .png --flag .jpg', 'cyan');
-    log('  gitset tree --flag --gitignore', 'cyan');
-
-    log('\nNOTE:', 'yellow');
-    log('  Historical range: 5-20 commits (default: 10)', 'yellow');
-    log('  Template stored in: ~/.gitset/COMMIT-MSG-TEMPLATE.md', 'yellow');
-    log('  Tree works on all platforms without external dependencies', 'yellow');
-    log('');
-  }
-
-  // --- Issue Crafter ---
-
-  const ISSUE_API_URL = 'https://gitset-core-v2.vercel.app/api/issue';
-
-  async function callIssueApi(payload) {
-    const gitsetKey = getGitsetKey();
-    if (!gitsetKey) throw new Error('Not authenticated');
-
-    const response = await fetch(ISSUE_API_URL, {
+  try {
+    const response = await fetch(BACKEND_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...payload, gitset_key: gitsetKey })
+      body: JSON.stringify({
+        gitset_key: gitsetKey,
+        changes: [{ file: 'test.js', status: 'M', before: 'a', after: 'b' }],
+        diff: 'test'
+      })
     });
 
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'API Error');
-    return data;
-  }
 
-  function getRepoUrl() {
-    return execCommand('git config --get remote.origin.url');
-  }
-
-  function getExistingLabels() {
-    try {
-      const output = execCommand('gh label list --limit 100 --json name');
-      if (!output) return [];
-      return JSON.parse(output).map(l => l.name);
-    } catch {
-      return [];
+    if (response.ok) {
+      log('✓ Connection successful', 'green');
+      log(`✓ User verified`, 'green');
+      if (data.quota_info) {
+        log(`\n📊 Account information:`, 'cyan');
+        log(`   Plan: ${data.quota_info.plan}`, 'yellow');
+        log(`   Messages used: ${data.quota_info.used}`, 'yellow');
+        log(`   Messages remaining: ${data.quota_info.remaining}`, 'yellow');
+      }
+    } else if (response.status === 401) {
+      log('✗ Invalid Gitset Key', 'red');
+      log('  The key does not exist in the database', 'yellow');
+    } else if (response.status === 500) {
+      log('✗ Server error', 'red');
+      log(`  Message: ${data.message || 'Unknown error'}`, 'yellow');
+      if (data.details) {
+        log(`  Details: ${data.details}`, 'yellow');
+      }
+    } else {
+      log(`✗ Error ${response.status}`, 'red');
+      log(`  ${data.error || data.message || 'Unknown error'}`, 'yellow');
     }
+  } catch (error) {
+    log('✗ Connection error', 'red');
+    log(`  ${error.message}`, 'yellow');
   }
 
-  async function askQuestion(query) {
+  log('');
+}
+
+function commandTemplate(action) {
+  ensureConfigDir();
+
+  if (!action || action === '--sync') {
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
     });
-    return new Promise(resolve => {
-      rl.question(query, answer => {
-        rl.close();
-        resolve(answer.trim());
-      });
-    });
-  }
 
-  async function selectOption(title, options) {
-    log(`\n${title}`, 'blue');
-    options.forEach((opt, i) => {
-      log(`${i + 1}. ${opt.label}`, 'cyan');
+    log('\n=== Gitset Template Manager ===', 'blue');
+    log('Create a custom commit message template\n', 'cyan');
+    log('Example template structure:', 'yellow');
+    log('---', 'yellow');
+    log('type(scope): brief description', 'yellow');
+    log('', 'yellow');
+    log('- Use present tense', 'yellow');
+    log('- Keep first line under 72 characters', 'yellow');
+    log('- Add detailed context if needed', 'yellow');
+    log('---\n', 'yellow');
+
+    const lines = [];
+
+    log('Enter your template (press Ctrl+D or Ctrl+Z when done):\n', 'cyan');
+
+    rl.on('line', (line) => {
+      lines.push(line);
     });
 
-    while (true) {
-      const answer = await askQuestion('\nSelect an option (number): ');
-      const index = parseInt(answer) - 1;
-      if (index >= 0 && index < options.length) {
-        return options[index].value;
+    rl.on('close', () => {
+      if (lines.length === 0) {
+        log('\n✗ No template provided', 'red');
+        return;
       }
-      log('Invalid selection', 'red');
+
+      const template = lines.join('\n');
+      fs.writeFileSync(TEMPLATE_FILE, template, 'utf8');
+
+      log('\n✓ Template saved successfully', 'green');
+      log(`📁 Location: ${TEMPLATE_FILE}`, 'cyan');
+      log(`\nUse with: gitset commit --custom\n`, 'yellow');
+    });
+  } else if (action === '--show') {
+    if (!fs.existsSync(TEMPLATE_FILE)) {
+      log('✗ No template found', 'red');
+      log('  Create one with: gitset template --sync', 'yellow');
+      return;
     }
+
+    const template = fs.readFileSync(TEMPLATE_FILE, 'utf8');
+    log('\n=== Current Template ===', 'blue');
+    log(template, 'cyan');
+    log('');
+  } else if (action === '--delete') {
+    if (!fs.existsSync(TEMPLATE_FILE)) {
+      log('✗ No template to delete', 'red');
+      return;
+    }
+
+    fs.unlinkSync(TEMPLATE_FILE);
+    log('✓ Template deleted successfully', 'green');
+  } else {
+    log('✗ Invalid template command', 'red');
+    log('  Available: --sync, --show, --delete', 'yellow');
   }
+}
 
-  // --- Init Command ---
+function showHelp() {
+  log('\n🚀 Gitset CLI v2.1', 'blue');
+  log('\nAvailable commands:\n', 'cyan');
 
-  function commandInit() {
-    ensureConfigDir();
+  log('AUTHENTICATION:', 'magenta');
+  log('  gitset auth               Authenticate with Gitset Key', 'green');
+  log('  gitset verify             Verify server connection', 'green');
+  log('  gitset logout             Close session', 'green');
 
-    const commitTemplatePath = path.join(CONFIG_DIR, 'COMMIT-MSG-TEMPLATE.md');
-    const issueTemplatePath = path.join(CONFIG_DIR, 'ISSUE-TEMPLATE.md');
+  log('\nCOMMIT GENERATION:', 'magenta');
+  log('  gitset commit             Generate commit message (unstaged changes)', 'green');
+  log('  gitset commit --staged    Generate commit message (staged only)', 'green');
+  log('  gitset commit --all       Generate commit message (all changes)', 'green');
+  log('  gitset commit --custom    Use custom template for generation', 'green');
+  log('  gitset commit --historical --N   Use last N commits for style (5-20)', 'green');
+  log('  gitset commit --historical       Use last 10 commits (default)', 'green');
 
-    const commitBoilerplate = `type(scope): brief description
+  log('\nTEMPLATE MANAGEMENT:', 'magenta');
+  log('  gitset template --sync    Create/update commit message template', 'green');
+  log('  gitset template --show    Display current template', 'green');
+  log('  gitset template --delete  Remove template', 'green');
+
+  log('\nTREE VISUALIZATION:', 'magenta');
+  log('  gitset tree               Show complete project structure', 'green');
+  log('  gitset tree --flag /node_modules --flag .astro', 'green');
+  log('                            Exclude specific folders', 'green');
+  log('  gitset tree --flag .png   Exclude files by extension', 'green');
+  log('  gitset tree --flag .md    Exclude all .md files', 'green');
+  log('  gitset tree --flag --gitignore', 'green');
+  log('                            Exclude all patterns from .gitignore', 'green');
+
+  log('\nUTILITIES:', 'magenta');
+  log('  gitset status             View repository status', 'green');
+  log('  gitset help               Show this help', 'green');
+
+  log('\nEXAMPLES:', 'magenta');
+  log('  gitset commit --custom --historical --15', 'cyan');
+  log('  gitset commit --all --historical', 'cyan');
+  log('  gitset commit --staged --custom', 'cyan');
+  log('  gitset tree --flag /node_modules --flag /dist', 'cyan');
+  log('  gitset tree --flag .png --flag .jpg', 'cyan');
+  log('  gitset tree --flag --gitignore', 'cyan');
+
+  log('\nNOTE:', 'yellow');
+  log('  Historical range: 5-20 commits (default: 10)', 'yellow');
+  log('  Template stored in: ~/.gitset/COMMIT-MSG-TEMPLATE.md', 'yellow');
+  log('  Tree works on all platforms without external dependencies', 'yellow');
+  log('');
+}
+
+// --- Issue Crafter ---
+
+const ISSUE_API_URL = 'https://gitset-core-v2.vercel.app/api/issue';
+
+async function callIssueApi(payload) {
+  const gitsetKey = getGitsetKey();
+  if (!gitsetKey) throw new Error('Not authenticated');
+
+  const response = await fetch(ISSUE_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...payload, gitset_key: gitsetKey })
+  });
+
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'API Error');
+  return data;
+}
+
+function getRepoUrl() {
+  return execCommand('git config --get remote.origin.url');
+}
+
+function getExistingLabels() {
+  try {
+    const output = execCommand('gh label list --limit 100 --json name');
+    if (!output) return [];
+    return JSON.parse(output).map(l => l.name);
+  } catch {
+    return [];
+  }
+}
+
+async function askQuestion(query) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+  return new Promise(resolve => {
+    rl.question(query, answer => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
+
+async function selectOption(title, options) {
+  log(`\n${title}`, 'blue');
+  options.forEach((opt, i) => {
+    log(`${i + 1}. ${opt.label}`, 'cyan');
+  });
+
+  while (true) {
+    const answer = await askQuestion('\nSelect an option (number): ');
+    const index = parseInt(answer) - 1;
+    if (index >= 0 && index < options.length) {
+      return options[index].value;
+    }
+    log('Invalid selection', 'red');
+  }
+}
+
+// --- Init Command ---
+
+function commandInit() {
+  ensureConfigDir();
+
+  const commitTemplatePath = path.join(CONFIG_DIR, 'COMMIT-MSG-TEMPLATE.md');
+  const issueTemplatePath = path.join(CONFIG_DIR, 'ISSUE-TEMPLATE.md');
+
+  const commitBoilerplate = `type(scope): brief description
 
 - Use present tense
 - Keep first line under 72 characters
 - Add detailed context if needed
 `;
 
-    const issueBoilerplate = `### Summary
+  const issueBoilerplate = `### Summary
 Briefly describe the issue.
 
 ### Background
@@ -927,23 +926,23 @@ Explain the technical details.
 - [ ] Criteria 2
 `;
 
-    if (!fs.existsSync(commitTemplatePath)) {
-      fs.writeFileSync(commitTemplatePath, commitBoilerplate);
-      log('✓ Created commit template: ~/.gitset/COMMIT-MSG-TEMPLATE.md', 'green');
-    } else {
-      log('ℹ Commit template already exists', 'yellow');
-    }
+  if (!fs.existsSync(commitTemplatePath)) {
+    fs.writeFileSync(commitTemplatePath, commitBoilerplate);
+    log('✓ Created commit template: ~/.gitset/COMMIT-MSG-TEMPLATE.md', 'green');
+  } else {
+    log('ℹ Commit template already exists', 'yellow');
+  }
 
-    if (!fs.existsSync(issueTemplatePath)) {
-      fs.writeFileSync(issueTemplatePath, issueBoilerplate);
-      log('✓ Created issue template: ~/.gitset/ISSUE-TEMPLATE.md', 'green');
-    } else {
-      log('ℹ Issue template already exists', 'yellow');
-    }
+  if (!fs.existsSync(issueTemplatePath)) {
+    fs.writeFileSync(issueTemplatePath, issueBoilerplate);
+    log('✓ Created issue template: ~/.gitset/ISSUE-TEMPLATE.md', 'green');
+  } else {
+    log('ℹ Issue template already exists', 'yellow');
+  }
 
-    // PR Template
-    const prTemplatePath = path.join(CONFIG_DIR, 'PR-TEMPLATE.md');
-    const prBoilerplate = `## Type of Change
+  // PR Template
+  const prTemplatePath = path.join(CONFIG_DIR, 'PR-TEMPLATE.md');
+  const prBoilerplate = `## Type of Change
 - [ ] Bug fix
 - [ ] New feature
 - [ ] Breaking change
@@ -960,16 +959,16 @@ Fixes #
 - [ ] Manual testing verified
 `;
 
-    if (!fs.existsSync(prTemplatePath)) {
-      fs.writeFileSync(prTemplatePath, prBoilerplate);
-      log('✓ Created PR template: ~/.gitset/PR-TEMPLATE.md', 'green');
-    } else {
-      log('ℹ PR template already exists', 'yellow');
-    }
+  if (!fs.existsSync(prTemplatePath)) {
+    fs.writeFileSync(prTemplatePath, prBoilerplate);
+    log('✓ Created PR template: ~/.gitset/PR-TEMPLATE.md', 'green');
+  } else {
+    log('ℹ PR template already exists', 'yellow');
+  }
 
-    // README Template
-    const readmeTemplatePath = path.join(CONFIG_DIR, 'README-TEMPLATE.md');
-    const readmeBoilerplate = `# {{PROJECT_NAME}}
+  // README Template
+  const readmeTemplatePath = path.join(CONFIG_DIR, 'README-TEMPLATE.md');
+  const readmeBoilerplate = `# {{PROJECT_NAME}}
 
 {{DESCRIPTION}}
 
@@ -988,970 +987,970 @@ npm start
 \`\`\`
 `;
 
-    if (!fs.existsSync(readmeTemplatePath)) {
-      fs.writeFileSync(readmeTemplatePath, readmeBoilerplate);
-      log('✓ Created README template: ~/.gitset/README-TEMPLATE.md', 'green');
-    } else {
-      log('ℹ README template already exists', 'yellow');
-    }
+  if (!fs.existsSync(readmeTemplatePath)) {
+    fs.writeFileSync(readmeTemplatePath, readmeBoilerplate);
+    log('✓ Created README template: ~/.gitset/README-TEMPLATE.md', 'green');
+  } else {
+    log('ℹ README template already exists', 'yellow');
+  }
+}
+
+// --- Issue Crafter Helpers ---
+
+function loadIssueTemplate() {
+  const templatePath = path.join(CONFIG_DIR, 'ISSUE-TEMPLATE.md');
+  if (fs.existsSync(templatePath)) {
+    return fs.readFileSync(templatePath, 'utf8');
+  }
+  return null;
+}
+
+function loadReadmeTemplate() {
+  const templatePath = path.join(CONFIG_DIR, 'README-TEMPLATE.md');
+  if (fs.existsSync(templatePath)) {
+    return fs.readFileSync(templatePath, 'utf8');
+  }
+  return null;
+}
+
+function getAssignees() {
+  try {
+    // Fetch collaborators who can be assigned
+    const output = execCommand('gh api repos/:owner/:repo/collaborators --jq ".[].login"');
+    if (!output) return [];
+    return output.split('\n').filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function getMilestones() {
+  try {
+    const output = execCommand('gh api repos/:owner/:repo/milestones --jq ".[].title"');
+    if (!output) return [];
+    return output.split('\n').filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function openInEditor(initialContent) {
+  const tmpFile = path.join(os.tmpdir(), `gitset-edit-${Date.now()}.md`);
+  fs.writeFileSync(tmpFile, initialContent);
+
+  const editor = process.env.EDITOR || 'vi';
+
+  try {
+    execSync(`${editor} "${tmpFile}"`, { stdio: 'inherit' });
+    return fs.readFileSync(tmpFile, 'utf8');
+  } catch (e) {
+    log(`✗ Failed to open editor: ${e.message}`, 'red');
+    return initialContent;
+  } finally {
+    if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+  }
+}
+
+async function closeIssueInteractive() {
+  log('\n=== Close Issue ===', 'blue');
+
+  // List open issues
+  const issuesOutput = execCommand('gh issue list --limit 10 --json number,title');
+  if (!issuesOutput) {
+    log('No open issues found.', 'yellow');
+    return;
   }
 
-  // --- Issue Crafter Helpers ---
-
-  function loadIssueTemplate() {
-    const templatePath = path.join(CONFIG_DIR, 'ISSUE-TEMPLATE.md');
-    if (fs.existsSync(templatePath)) {
-      return fs.readFileSync(templatePath, 'utf8');
-    }
-    return null;
+  const issues = JSON.parse(issuesOutput);
+  if (issues.length === 0) {
+    log('No open issues found.', 'yellow');
+    return;
   }
 
-  function loadReadmeTemplate() {
-    const templatePath = path.join(CONFIG_DIR, 'README-TEMPLATE.md');
-    if (fs.existsSync(templatePath)) {
-      return fs.readFileSync(templatePath, 'utf8');
-    }
-    return null;
-  }
+  issues.forEach((issue, i) => {
+    log(`${i + 1}. #${issue.number} ${issue.title}`, 'cyan');
+  });
 
-  function getAssignees() {
+  const selection = await askQuestion('\nSelect issue to close (number): ');
+  const index = parseInt(selection) - 1;
+
+  if (index >= 0 && index < issues.length) {
+    const issue = issues[index];
+    const reason = await selectOption('Reason for closing:', [
+      { label: 'Completed', value: 'completed' },
+      { label: 'Not Planned', value: 'not planned' },
+      { label: 'Duplicate', value: 'duplicate' }
+    ]);
+
+    const ghReason = reason === 'completed' ? 'completed' : 'not planned';
+
     try {
-      // Fetch collaborators who can be assigned
-      const output = execCommand('gh api repos/:owner/:repo/collaborators --jq ".[].login"');
-      if (!output) return [];
-      return output.split('\n').filter(Boolean);
-    } catch {
-      return [];
-    }
-  }
-
-  function getMilestones() {
-    try {
-      const output = execCommand('gh api repos/:owner/:repo/milestones --jq ".[].title"');
-      if (!output) return [];
-      return output.split('\n').filter(Boolean);
-    } catch {
-      return [];
-    }
-  }
-
-  function openInEditor(initialContent) {
-    const tmpFile = path.join(os.tmpdir(), `gitset-edit-${Date.now()}.md`);
-    fs.writeFileSync(tmpFile, initialContent);
-
-    const editor = process.env.EDITOR || 'vi';
-
-    try {
-      execSync(`${editor} "${tmpFile}"`, { stdio: 'inherit' });
-      return fs.readFileSync(tmpFile, 'utf8');
+      execCommand(`gh issue close ${issue.number} --reason "${ghReason}"`);
+      if (reason === 'duplicate') {
+        execCommand(`gh issue comment ${issue.number} --body "Closed as duplicate."`);
+      }
+      log(`✓ Issue #${issue.number} closed as ${reason}.`, 'green');
     } catch (e) {
-      log(`✗ Failed to open editor: ${e.message}`, 'red');
-      return initialContent;
-    } finally {
-      if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+      log(`✗ Failed to close issue: ${e.message}`, 'red');
     }
   }
+}
 
-  async function closeIssueInteractive() {
-    log('\n=== Close Issue ===', 'blue');
+function loadPRTemplate() {
+  const templatePath = path.join(CONFIG_DIR, 'PR-TEMPLATE.md');
+  if (fs.existsSync(templatePath)) {
+    return fs.readFileSync(templatePath, 'utf8');
+  }
+  return null;
+}
 
-    // List open issues
-    const issuesOutput = execCommand('gh issue list --limit 10 --json number,title');
-    if (!issuesOutput) {
-      log('No open issues found.', 'yellow');
-      return;
+async function callPRApi(payload) {
+  const gitsetKey = getGitsetKey();
+  const response = await fetch(`${BACKEND_URL.replace('/commit', '/pr')}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...payload, gitset_key: gitsetKey })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'API request failed');
+  }
+
+  return await response.json();
+}
+
+function getReviewers() {
+  try {
+    // Exclude current user to avoid self-review error (though gh handles it, it's cleaner)
+    const currentUser = execCommand('gh api user --jq ".login"');
+    const output = execCommand('gh api repos/:owner/:repo/collaborators --jq ".[].login"');
+    if (!output) return [];
+    return output.split('\n').filter(u => u && u !== currentUser);
+  } catch {
+    return [];
+  }
+}
+
+async function commandPR(options = {}) {
+  if (!isGitRepo()) {
+    log('✗ Not in a Git repository', 'red');
+    return;
+  }
+
+  const gitsetKey = getGitsetKey();
+  if (!gitsetKey) {
+    log('✗ Not authenticated. Use: gitset auth', 'red');
+    return;
+  }
+
+  log('\n=== Gitset PR Maker ===', 'blue');
+
+  // 1. Branch Detection
+  const currentBranch = execCommand('git branch --show-current');
+  const defaultTarget = 'main'; // Could try to detect master/main
+
+  log(`Current Branch: ${currentBranch}`, 'cyan');
+  const targetBranch = await askQuestion(`Target Branch [${defaultTarget}]: `) || defaultTarget;
+
+  // 2. Diff Capture
+  log('→ Capturing diff...', 'yellow');
+  let diff;
+  try {
+    // Get diff between target and current branch
+    diff = execCommand(`git diff ${targetBranch}...${currentBranch}`);
+    if (!diff) {
+      log('⚠️  No diff found or branches are identical.', 'yellow');
+      const proceed = await askQuestion('Proceed anyway? (y/n): ');
+      if (proceed.toLowerCase() !== 'y') return;
     }
+  } catch (e) {
+    log(`✗ Error capturing diff: ${e.message}`, 'red');
+    return;
+  }
 
-    const issues = JSON.parse(issuesOutput);
-    if (issues.length === 0) {
-      log('No open issues found.', 'yellow');
-      return;
-    }
+  // 3. Initial Description
+  const description = await askQuestion('Describe the PR (briefly): ');
+  if (!description) return;
 
-    issues.forEach((issue, i) => {
-      log(`${i + 1}. #${issue.number} ${issue.title}`, 'cyan');
+  let customTemplate = null;
+  if (options.custom) {
+    customTemplate = loadPRTemplate();
+    if (customTemplate) log('→ Using custom PR template', 'magenta');
+  }
+
+  log('\n→ Generating PR draft with AI...', 'yellow');
+
+  let draft;
+  try {
+    draft = await callPRApi({
+      action: 'generate',
+      description,
+      diff,
+      repoContext: getRepoUrl(),
+      custom_template: customTemplate
     });
-
-    const selection = await askQuestion('\nSelect issue to close (number): ');
-    const index = parseInt(selection) - 1;
-
-    if (index >= 0 && index < issues.length) {
-      const issue = issues[index];
-      const reason = await selectOption('Reason for closing:', [
-        { label: 'Completed', value: 'completed' },
-        { label: 'Not Planned', value: 'not planned' },
-        { label: 'Duplicate', value: 'duplicate' }
-      ]);
-
-      const ghReason = reason === 'completed' ? 'completed' : 'not planned';
-
-      try {
-        execCommand(`gh issue close ${issue.number} --reason "${ghReason}"`);
-        if (reason === 'duplicate') {
-          execCommand(`gh issue comment ${issue.number} --body "Closed as duplicate."`);
-        }
-        log(`✓ Issue #${issue.number} closed as ${reason}.`, 'green');
-      } catch (e) {
-        log(`✗ Failed to close issue: ${e.message}`, 'red');
-      }
-    }
+  } catch (error) {
+    log(`✗ Error: ${error.message}`, 'red');
+    return;
   }
 
-  function loadPRTemplate() {
-    const templatePath = path.join(CONFIG_DIR, 'PR-TEMPLATE.md');
-    if (fs.existsSync(templatePath)) {
-      return fs.readFileSync(templatePath, 'utf8');
-    }
-    return null;
-  }
+  let currentTitle = draft.title;
+  let currentBody = draft.body;
+  let currentLabels = [];
+  let selectedMilestone = null;
+  let selectedAssignees = [];
+  let selectedReviewers = [];
+  let isDraft = false;
 
-  async function callPRApi(payload) {
-    const gitsetKey = getGitsetKey();
-    const response = await fetch(`${BACKEND_URL.replace('/commit', '/pr')}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...payload, gitset_key: gitsetKey })
-    });
+  // Wizard Loop
+  while (true) {
+    console.clear();
+    log('=== PR Draft ===', 'blue');
+    log(`\nTITLE: ${currentTitle}`, 'green');
+    log(`TARGET: ${targetBranch} ← ${currentBranch}`, 'cyan');
+    log(`LABELS: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'magenta');
+    log(`MILESTONE: ${selectedMilestone || 'None'}`, 'magenta');
+    log(`ASSIGNEES: ${selectedAssignees.join(', ') || 'None'}`, 'magenta');
+    log(`REVIEWERS: ${selectedReviewers.join(', ') || 'None'}`, 'magenta');
+    log(`STATUS: ${isDraft ? 'Draft' : 'Ready'}`, 'yellow');
+    log(`\nBODY PREVIEW:\n${currentBody.substring(0, 300)}...\n(Full body hidden for brevity)`, 'reset');
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'API request failed');
-    }
+    const action = await selectOption('What would you like to do?', [
+      { label: 'Confirm & Create PR', value: 'create' },
+      { label: 'Edit/Refine Title', value: 'title' },
+      { label: 'Edit/Refine Description', value: 'body' },
+      { label: 'Manage Labels', value: 'labels' },
+      { label: 'Set Milestone', value: 'milestone' },
+      { label: 'Set Assignees', value: 'assignees' },
+      { label: 'Set Reviewers', value: 'reviewers' },
+      { label: 'Toggle Draft Status', value: 'draft' },
+      { label: 'Save to File', value: 'save' },
+      { label: 'Cancel', value: 'cancel' }
+    ]);
 
-    return await response.json();
-  }
-
-  function getReviewers() {
-    try {
-      // Exclude current user to avoid self-review error (though gh handles it, it's cleaner)
-      const currentUser = execCommand('gh api user --jq ".login"');
-      const output = execCommand('gh api repos/:owner/:repo/collaborators --jq ".[].login"');
-      if (!output) return [];
-      return output.split('\n').filter(u => u && u !== currentUser);
-    } catch {
-      return [];
-    }
-  }
-
-  async function commandPR(options = {}) {
-    if (!isGitRepo()) {
-      log('✗ Not in a Git repository', 'red');
-      return;
+    if (action === 'cancel') {
+      log('Cancelled.', 'yellow');
+      break;
     }
 
-    const gitsetKey = getGitsetKey();
-    if (!gitsetKey) {
-      log('✗ Not authenticated. Use: gitset auth', 'red');
-      return;
-    }
-
-    log('\n=== Gitset PR Maker ===', 'blue');
-
-    // 1. Branch Detection
-    const currentBranch = execCommand('git branch --show-current');
-    const defaultTarget = 'main'; // Could try to detect master/main
-
-    log(`Current Branch: ${currentBranch}`, 'cyan');
-    const targetBranch = await askQuestion(`Target Branch [${defaultTarget}]: `) || defaultTarget;
-
-    // 2. Diff Capture
-    log('→ Capturing diff...', 'yellow');
-    let diff;
-    try {
-      // Get diff between target and current branch
-      diff = execCommand(`git diff ${targetBranch}...${currentBranch}`);
-      if (!diff) {
-        log('⚠️  No diff found or branches are identical.', 'yellow');
-        const proceed = await askQuestion('Proceed anyway? (y/n): ');
-        if (proceed.toLowerCase() !== 'y') return;
-      }
-    } catch (e) {
-      log(`✗ Error capturing diff: ${e.message}`, 'red');
-      return;
-    }
-
-    // 3. Initial Description
-    const description = await askQuestion('Describe the PR (briefly): ');
-    if (!description) return;
-
-    let customTemplate = null;
-    if (options.custom) {
-      customTemplate = loadPRTemplate();
-      if (customTemplate) log('→ Using custom PR template', 'magenta');
-    }
-
-    log('\n→ Generating PR draft with AI...', 'yellow');
-
-    let draft;
-    try {
-      draft = await callPRApi({
-        action: 'generate',
-        description,
-        diff,
-        repoContext: getRepoUrl(),
-        custom_template: customTemplate
-      });
-    } catch (error) {
-      log(`✗ Error: ${error.message}`, 'red');
-      return;
-    }
-
-    let currentTitle = draft.title;
-    let currentBody = draft.body;
-    let currentLabels = [];
-    let selectedMilestone = null;
-    let selectedAssignees = [];
-    let selectedReviewers = [];
-    let isDraft = false;
-
-    // Wizard Loop
-    while (true) {
-      console.clear();
-      log('=== PR Draft ===', 'blue');
-      log(`\nTITLE: ${currentTitle}`, 'green');
-      log(`TARGET: ${targetBranch} ← ${currentBranch}`, 'cyan');
-      log(`LABELS: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'magenta');
-      log(`MILESTONE: ${selectedMilestone || 'None'}`, 'magenta');
-      log(`ASSIGNEES: ${selectedAssignees.join(', ') || 'None'}`, 'magenta');
-      log(`REVIEWERS: ${selectedReviewers.join(', ') || 'None'}`, 'magenta');
-      log(`STATUS: ${isDraft ? 'Draft' : 'Ready'}`, 'yellow');
-      log(`\nBODY PREVIEW:\n${currentBody.substring(0, 300)}...\n(Full body hidden for brevity)`, 'reset');
-
-      const action = await selectOption('What would you like to do?', [
-        { label: 'Confirm & Create PR', value: 'create' },
-        { label: 'Edit/Refine Title', value: 'title' },
-        { label: 'Edit/Refine Description', value: 'body' },
-        { label: 'Manage Labels', value: 'labels' },
-        { label: 'Set Milestone', value: 'milestone' },
-        { label: 'Set Assignees', value: 'assignees' },
-        { label: 'Set Reviewers', value: 'reviewers' },
-        { label: 'Toggle Draft Status', value: 'draft' },
-        { label: 'Save to File', value: 'save' },
-        { label: 'Cancel', value: 'cancel' }
-      ]);
-
-      if (action === 'cancel') {
-        log('Cancelled.', 'yellow');
-        break;
-      }
-
-      if (action === 'save') {
-        const filename = await askQuestion('Filename (e.g. pr_draft.md): ');
-        if (filename) {
-          fs.writeFileSync(filename, `# ${currentTitle}\n\n${currentBody}`);
-          log(`✓ Saved to ${filename}`, 'green');
-          await new Promise(r => setTimeout(r, 1000));
-        }
-      }
-
-      if (action === 'draft') {
-        isDraft = !isDraft;
-      }
-
-      // ... (Reuse logic for title, body, labels, milestone, assignees from commandIssue if possible or duplicate for speed)
-      if (action === 'title') {
-        const choice = await selectOption('Title Action:', [
-          { label: 'Edit Manually', value: 'manual' },
-          { label: 'AI Refine', value: 'refine' }
-        ]);
-        if (choice === 'manual') {
-          currentTitle = await askQuestion('New Title: ');
-        } else {
-          const instruction = await askQuestion('Refinement instruction: ');
-          log('→ Refining...', 'yellow');
-          const res = await callPRApi({
-            action: 'refine',
-            draftId: draft.draftId,
-            field: 'title',
-            currentContent: currentTitle,
-            instruction,
-            fullContext: { title: currentTitle, body: currentBody }
-          });
-          currentTitle = res.content;
-        }
-      }
-
-      if (action === 'body') {
-        const choice = await selectOption('Body Action:', [
-          { label: 'Edit Manually (Editor)', value: 'manual' },
-          { label: 'AI Refine', value: 'refine' }
-        ]);
-        if (choice === 'manual') {
-          currentBody = openInEditor(currentBody);
-        } else {
-          const instruction = await askQuestion('Refinement instruction: ');
-          log('→ Refining...', 'yellow');
-          const res = await callPRApi({
-            action: 'refine',
-            draftId: draft.draftId,
-            field: 'description',
-            currentContent: currentBody,
-            instruction,
-            fullContext: { title: currentTitle, body: currentBody }
-          });
-          currentBody = res.content;
-        }
-      }
-
-      if (action === 'labels') {
-        // Reuse label logic (simplified for brevity in this replacement)
-        const existing = getExistingLabels();
-        log('\nAvailable Labels:', 'cyan');
-        existing.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
-        const sel = await askQuestion('Select labels (numbers, comma sep) or type new: ');
-        // ... (Assume user enters numbers for now)
-        const indices = sel.split(',').map(s => parseInt(s.trim()) - 1);
-        currentLabels = indices.map(i => existing[i]).filter(l => l);
-      }
-
-      if (action === 'milestone') {
-        const milestones = getMilestones();
-        if (milestones.length === 0) {
-          log('No milestones found.', 'yellow');
-          await new Promise(r => setTimeout(r, 1000));
-        } else {
-          log('\nAvailable Milestones:', 'cyan');
-          milestones.forEach((m, i) => log(`${i + 1}. ${m}`, 'reset'));
-          const selection = await askQuestion('Select milestone (number): ');
-          const idx = parseInt(selection) - 1;
-          if (idx >= 0 && idx < milestones.length) selectedMilestone = milestones[idx];
-        }
-      }
-
-      if (action === 'assignees') {
-        const assignees = getAssignees();
-        if (assignees.length === 0) {
-          log('No assignees found.', 'yellow');
-          await new Promise(r => setTimeout(r, 1000));
-        } else {
-          log('\nAvailable Assignees:', 'cyan');
-          assignees.forEach((a, i) => log(`${i + 1}. ${a}`, 'reset'));
-          const selection = await askQuestion('Select assignees (numbers, comma sep): ');
-          const indices = selection.split(',').map(s => parseInt(s.trim()) - 1);
-          selectedAssignees = indices.map(i => assignees[i]).filter(a => a);
-        }
-      }
-
-      if (action === 'reviewers') {
-        const reviewers = getReviewers();
-        if (reviewers.length === 0) {
-          log('No reviewers found.', 'yellow');
-          await new Promise(r => setTimeout(r, 1000));
-        } else {
-          log('\nAvailable Reviewers:', 'cyan');
-          reviewers.forEach((r, i) => log(`${i + 1}. ${r}`, 'reset'));
-          const selection = await askQuestion('Select reviewers (numbers, comma sep): ');
-          const indices = selection.split(',').map(s => parseInt(s.trim()) - 1);
-          selectedReviewers = indices.map(i => reviewers[i]).filter(r => r);
-        }
-      }
-
-      if (action === 'create') {
-        log('\n→ Creating PR on GitHub...', 'cyan');
-
-        // Create temporary file for body
-        const tmpFile = path.join(os.tmpdir(), `gitset-pr-${Date.now()}.md`);
-        fs.writeFileSync(tmpFile, currentBody);
-
-        const labelArgs = currentLabels.map(l => `-l "${l.name || l}"`).join(' ');
-        const milestoneArg = selectedMilestone ? `-m "${selectedMilestone}"` : '';
-        const assigneeArg = selectedAssignees.length > 0 ? `-a "${selectedAssignees.join(',')}"` : '';
-        const reviewerArg = selectedReviewers.length > 0 ? `-r "${selectedReviewers.join(',')}"` : '';
-        const draftArg = isDraft ? '--draft' : '';
-        const baseArg = `-B "${targetBranch}"`;
-
-        const cmd = `gh pr create -t "${currentTitle}" -F "${tmpFile}" ${baseArg} ${labelArgs} ${milestoneArg} ${assigneeArg} ${reviewerArg} ${draftArg}`;
-
-        try {
-          const url = execCommand(cmd);
-          if (url) {
-            log(`\n✓ PR created successfully!`, 'green');
-            log(`🔗 URL: ${url}`, 'blue');
-          } else {
-            log('\n✗ Failed to create PR via gh CLI', 'red');
-          }
-        } catch (error) {
-          log(`\n✗ Error creating PR: ${error.message}`, 'red');
-        } finally {
-          if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
-        }
-        break;
-      }
-    }
-  }
-
-  async function commandIssue(options = {}) {
-    if (!isGitRepo()) {
-      log('✗ Not in a Git repository', 'red');
-      return;
-    }
-
-    const gitsetKey = getGitsetKey();
-    if (!gitsetKey) {
-      log('✗ Not authenticated. Use: gitset auth', 'red');
-      return;
-    }
-
-    if (options.close) {
-      await closeIssueInteractive();
-      return;
-    }
-
-    log('\n=== Gitset Issue Crafter ===', 'blue');
-
-    // 1. Initial Description
-    const description = await askQuestion('Describe the issue (what, why, how): ');
-    if (!description) return;
-
-    let customTemplate = null;
-    if (options.custom) {
-      customTemplate = loadIssueTemplate();
-      if (customTemplate) {
-        log('→ Using custom issue template', 'magenta');
-      } else {
-        log('⚠️  No custom issue template found. Run gitset init', 'yellow');
-      }
-    }
-
-    log('\n→ Generating draft with AI...', 'yellow');
-
-    let draft;
-    try {
-      draft = await callIssueApi({
-        action: 'generate',
-        description,
-        repoContext: getRepoUrl(),
-        custom_template: customTemplate
-      });
-    } catch (error) {
-      log(`✗ Error: ${error.message}`, 'red');
-      return;
-    }
-
-    let currentTitle = draft.title;
-    let currentBody = draft.body;
-    let currentLabels = [];
-    let draftId = draft.draftId;
-    let selectedMilestone = null;
-    let selectedAssignees = [];
-
-    // Wizard Loop
-    while (true) {
-      console.clear();
-      log('=== Issue Draft ===', 'blue');
-      log(`\nTITLE: ${currentTitle}`, 'green');
-      log(`\nLABELS: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'magenta');
-      log(`MILESTONE: ${selectedMilestone || 'None'}`, 'magenta');
-      log(`ASSIGNEES: ${selectedAssignees.join(', ') || 'None'}`, 'magenta');
-      log(`\nBODY PREVIEW:\n${currentBody.substring(0, 300)}...\n(Full body hidden for brevity)`, 'reset');
-
-      const action = await selectOption('What would you like to do?', [
-        { label: 'Confirm & Create Issue', value: 'create' },
-        { label: 'Edit/Refine Title', value: 'title' },
-        { label: 'Edit/Refine Description', value: 'body' },
-        { label: 'Manage Labels', value: 'labels' },
-        { label: 'Set Milestone', value: 'milestone' },
-        { label: 'Set Assignees', value: 'assignees' },
-        { label: 'Save to File', value: 'save' },
-        { label: 'Cancel', value: 'cancel' }
-      ]);
-
-      if (action === 'cancel') {
-        log('Cancelled.', 'yellow');
-        break;
-      }
-
-      if (action === 'save') {
-        const filename = await askQuestion('Filename (e.g. draft.md): ');
-        if (filename) {
-          fs.writeFileSync(filename, `# ${currentTitle}\n\n${currentBody}`);
-          log(`✓ Saved to ${filename}`, 'green');
-          await new Promise(r => setTimeout(r, 1000));
-        }
-      }
-
-      if (action === 'milestone') {
-        const milestones = getMilestones();
-        if (milestones.length === 0) {
-          log('No milestones found.', 'yellow');
-          await new Promise(r => setTimeout(r, 1000));
-        } else {
-          log('\nAvailable Milestones:', 'cyan');
-          milestones.forEach((m, i) => log(`${i + 1}. ${m}`, 'reset'));
-          const selection = await askQuestion('Select milestone (number): ');
-          const idx = parseInt(selection) - 1;
-          if (idx >= 0 && idx < milestones.length) {
-            selectedMilestone = milestones[idx];
-          }
-        }
-      }
-
-      if (action === 'assignees') {
-        const assignees = getAssignees();
-        if (assignees.length === 0) {
-          log('No assignees found.', 'yellow');
-          await new Promise(r => setTimeout(r, 1000));
-        } else {
-          log('\nAvailable Assignees:', 'cyan');
-          assignees.forEach((a, i) => log(`${i + 1}. ${a}`, 'reset'));
-          const selection = await askQuestion('Select assignees (numbers separated by comma, e.g. 1,2): ');
-          const indices = selection.split(',').map(s => parseInt(s.trim()) - 1);
-          selectedAssignees = indices.map(i => assignees[i]).filter(a => a);
-        }
-      }
-
-      if (action === 'create') {
-        log('\n→ Creating issue on GitHub...', 'cyan');
-
-        // Ensure labels exist
-        const existingLabels = getExistingLabels();
-        for (const label of currentLabels) {
-          const labelName = label.name || label;
-          if (!existingLabels.includes(labelName)) {
-            log(`→ Creating label: ${labelName}`, 'yellow');
-            const color = label.color ? `--color "${label.color}"` : '';
-            const desc = label.description ? `--description "${label.description}"` : '';
-            try {
-              execCommand(`gh label create "${labelName}" ${color} ${desc}`);
-            } catch (e) {
-              log(`⚠️ Failed to create label ${labelName}: ${e.message}`, 'yellow');
-            }
-          }
-        }
-
-        // Create temporary file for body
-        const tmpFile = path.join(os.tmpdir(), `gitset-issue-${Date.now()}.md`);
-        fs.writeFileSync(tmpFile, currentBody);
-
-        const labelArgs = currentLabels.map(l => `-l "${l.name || l}"`).join(' ');
-        const milestoneArg = selectedMilestone ? `-m "${selectedMilestone}"` : '';
-        const assigneeArg = selectedAssignees.length > 0 ? `-a "${selectedAssignees.join(',')}"` : '';
-
-        const cmd = `gh issue create -t "${currentTitle}" -F "${tmpFile}" ${labelArgs} ${milestoneArg} ${assigneeArg}`;
-
-        try {
-          const url = execCommand(cmd);
-          if (url) {
-            log(`\n✓ Issue created successfully!`, 'green');
-            log(`🔗 URL: ${url}`, 'blue');
-
-            // Branch creation prompt
-            const issueNumber = url.split('/').pop();
-            const createBranch = await askQuestion('\nCreate a branch for this issue? (y/n): ');
-            if (createBranch.toLowerCase() === 'y') {
-              // Sanitize title for branch name
-              const sanitizedTitle = currentTitle
-                .toLowerCase()
-                .replace(/[^a-z0-9\s-]/g, '') // Remove special chars
-                .trim()
-                .replace(/\s+/g, '-') // Replace spaces with dashes
-                .substring(0, 50); // Limit length
-
-              const branchName = `feat/${issueNumber}-${sanitizedTitle}`;
-
-              try {
-                execCommand(`git checkout -b ${branchName}`);
-                log(`✓ Switched to new branch: ${branchName}`, 'green');
-              } catch (e) {
-                log(`✗ Failed to create branch: ${e.message}`, 'red');
-              }
-            }
-
-          } else {
-            log('\n✗ Failed to create issue via gh CLI', 'red');
-            log('  Command output was empty. Ensure gh is authenticated.', 'yellow');
-          }
-        } catch (error) {
-          log(`\n✗ Error creating issue: ${e.message}`, 'red');
-        } finally {
-          if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
-        }
-        break;
-      }
-
-      if (action === 'title') {
-        const subAction = await selectOption('Title Options:', [
-          { label: 'Manual Edit', value: 'manual' },
-          { label: 'AI Refine', value: 'ai' },
-          { label: 'View History', value: 'history' },
-          { label: 'Back', value: 'back' }
-        ]);
-
-        if (subAction === 'manual') {
-          const newTitle = await askQuestion(`Current: ${currentTitle}\nNew Title: `);
-          if (newTitle) currentTitle = newTitle;
-        } else if (subAction === 'ai') {
-          const instruction = await askQuestion('How should the AI refine the title? ');
-          log('→ Refining...', 'yellow');
-          const result = await callIssueApi({
-            action: 'refine',
-            draftId,
-            field: 'title',
-            currentContent: currentTitle,
-            instruction,
-            fullIssueContext: { title: currentTitle, body: currentBody }
-          });
-          currentTitle = result.content;
-        } else if (subAction === 'history') {
-          const history = await callIssueApi({ action: 'history', draftId, field: 'title' });
-          log('\nHistory:', 'cyan');
-          history.history.forEach((h, i) => log(`${i + 1}. ${h.content}`, 'reset'));
-          await askQuestion('Press Enter to continue...');
-        }
-      }
-
-      if (action === 'body') {
-        const subAction = await selectOption('Description Options:', [
-          { label: 'Open in Editor', value: 'editor' },
-          { label: 'AI Refine', value: 'ai' },
-          { label: 'View History', value: 'history' },
-          { label: 'Back', value: 'back' }
-        ]);
-
-        if (subAction === 'editor') {
-          currentBody = openInEditor(currentBody);
-        } else if (subAction === 'ai') {
-          const instruction = await askQuestion('How should the AI refine the description? ');
-          log('→ Refining...', 'yellow');
-          const result = await callIssueApi({
-            action: 'refine',
-            draftId,
-            field: 'description',
-            currentContent: currentBody,
-            instruction,
-            fullIssueContext: { title: currentTitle, body: currentBody }
-          });
-          currentBody = result.content;
-        } else if (subAction === 'history') {
-          const history = await callIssueApi({ action: 'history', draftId, field: 'description' });
-          log('\nHistory (Versions):', 'cyan');
-          history.history.forEach((h, i) => log(`${i + 1}. Version ${h.version_number} (${new Date(h.created_at).toLocaleTimeString()})`, 'reset'));
-
-          const restore = await askQuestion('Restore a version? (Enter number or 0 to cancel): ');
-          const idx = parseInt(restore) - 1;
-          if (idx >= 0 && idx < history.history.length) {
-            currentBody = history.history[idx].content;
-            log('✓ Restored', 'green');
-            await new Promise(r => setTimeout(r, 1000));
-          }
-        }
-      }
-
-      if (action === 'labels') {
-        const subAction = await selectOption('Label Options:', [
-          { label: 'AI Suggest', value: 'ai' },
-          { label: 'Select Existing', value: 'select' },
-          { label: 'Clear All', value: 'clear' },
-          { label: 'Back', value: 'back' }
-        ]);
-
-        if (subAction === 'ai') {
-          log('→ Analyzing...', 'yellow');
-          const existing = getExistingLabels();
-          const result = await callIssueApi({
-            action: 'labels',
-            title: currentTitle,
-            body: currentBody,
-            existingLabels: existing
-          });
-          currentLabels = result.labels;
-        } else if (subAction === 'select') {
-          const existing = getExistingLabels();
-          if (existing.length === 0) {
-            log('No existing labels found.', 'yellow');
-          } else {
-            log('Existing Labels:', 'cyan');
-            existing.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
-            const selection = await askQuestion('Enter numbers separated by comma (e.g. 1,3): ');
-            const indices = selection.split(',').map(s => parseInt(s.trim()) - 1);
-            const selected = indices.map(i => existing[i]).filter(l => l);
-            currentLabels = [...currentLabels, ...selected.map(name => ({ name }))];
-          }
-          await new Promise(r => setTimeout(r, 1000));
-        } else if (subAction === 'clear') {
-          currentLabels = [];
-        }
-      }
-    }
-  }
-
-  function loadReadmeTemplate() {
-    const templatePath = path.join(CONFIG_DIR, 'README-TEMPLATE.md');
-    if (fs.existsSync(templatePath)) {
-      return fs.readFileSync(templatePath, 'utf8');
-    }
-    return null;
-  }
-
-  // --- README Generator ---
-  const { analyzeRepo } = require('./src/utils/repo-analyzer');
-  const { generateBadges } = require('./src/utils/badge-generator');
-  const { getLicenseList, generateLicenseFile } = require('./src/utils/license-generator');
-
-  async function callReadmeApi(payload) {
-    const gitsetKey = getGitsetKey();
-    const response = await fetch(`${BACKEND_URL.replace('/commit', '/readme')}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...payload, gitset_key: gitsetKey })
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'API request failed');
-    }
-
-    return await response.json();
-  }
-
-  async function commandReadme(options = {}) {
-    if (!isGitRepo()) {
-      log('✗ Not in a Git repository', 'red');
-      return;
-    }
-
-    const gitsetKey = getGitsetKey();
-    if (!gitsetKey) {
-      log('✗ Not authenticated. Use: gitset auth', 'red');
-      return;
-    }
-
-    log('\n=== Gitset README Generator ===', 'blue');
-
-    // 1. Analyze Repo
-    log('→ Analyzing repository...', 'yellow');
-    const analysis = analyzeRepo(process.cwd());
-    log(`✓ Detected: ${analysis.language} (${analysis.packageManager})`, 'green');
-    if (analysis.frameworks.length) log(`  Frameworks: ${analysis.frameworks.join(', ')}`, 'green');
-
-    // 2. License Check
-    if (!analysis.hasLicense) {
-      const addLicense = await askQuestion('\n⚠️  No LICENSE found. Add one? (y/n): ');
-      if (addLicense.toLowerCase() === 'y') {
-        const licenses = getLicenseList();
-        log('Available Licenses:', 'cyan');
-        licenses.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
-        const sel = await askQuestion('Select license (number): ');
-        const idx = parseInt(sel) - 1;
-        if (idx >= 0 && idx < licenses.length) {
-          const author = await askQuestion('Author Name: ');
-          const year = new Date().getFullYear();
-          generateLicenseFile(licenses[idx], author, year, process.cwd());
-          log('✓ LICENSE file created.', 'green');
-          analysis.hasLicense = true;
-        }
-      }
-    }
-
-    // 3. Generate Content
-    let customTemplate = null;
-    if (options.custom) {
-      customTemplate = loadReadmeTemplate();
-      if (customTemplate) log('→ Using custom README template', 'magenta');
-    }
-
-    log('\n→ Generating README with AI...', 'yellow');
-
-    let draft;
-    try {
-      draft = await callReadmeApi({
-        action: 'generate',
-        analysis,
-        custom_template: customTemplate
-      });
-    } catch (error) {
-      log(`✗ Error: ${error.message}`, 'red');
-      return;
-    }
-
-    let currentContent = draft.content;
-    const badges = generateBadges(analysis);
-
-    // Prepend badges if not present
-    if (!currentContent.includes('img.shields.io')) {
-      currentContent = `# ${analysis.name}\n\n${badges}\n\n${currentContent.replace(/^# .*\n/, '')}`;
-    }
-
-    // Wizard Loop
-    while (true) {
-      console.clear();
-      log('=== README Draft ===', 'blue');
-      log(`\nPREVIEW (First 500 chars):\n${currentContent.substring(0, 500)}...\n`, 'reset');
-
-      const action = await selectOption('What would you like to do?', [
-        { label: 'Save & Exit', value: 'save' },
-        { label: 'Refine Section', value: 'refine' },
-        { label: 'View Full Preview', value: 'preview' },
-        { label: 'Cancel', value: 'cancel' }
-      ]);
-
-      if (action === 'cancel') {
-        log('Cancelled.', 'yellow');
-        break;
-      }
-
-      if (action === 'save') {
-        const filename = 'README.md';
-        if (fs.existsSync(filename)) {
-          const overwrite = await askQuestion('README.md exists. Overwrite? (y/n): ');
-          if (overwrite.toLowerCase() !== 'y') break;
-        }
-        fs.writeFileSync(filename, currentContent);
+    if (action === 'save') {
+      const filename = await askQuestion('Filename (e.g. pr_draft.md): ');
+      if (filename) {
+        fs.writeFileSync(filename, `# ${currentTitle}\n\n${currentBody}`);
         log(`✓ Saved to ${filename}`, 'green');
-        break;
+        await new Promise(r => setTimeout(r, 1000));
       }
+    }
 
-      if (action === 'preview') {
-        console.log('\n' + '-'.repeat(50));
-        console.log(currentContent);
-        console.log('-'.repeat(50) + '\n');
-        await askQuestion('Press Enter to continue...');
-      }
+    if (action === 'draft') {
+      isDraft = !isDraft;
+    }
 
-      if (action === 'refine') {
-        const instruction = await askQuestion('Refinement instruction (e.g., "Expand Installation section"): ');
+    // ... (Reuse logic for title, body, labels, milestone, assignees from commandIssue if possible or duplicate for speed)
+    if (action === 'title') {
+      const choice = await selectOption('Title Action:', [
+        { label: 'Edit Manually', value: 'manual' },
+        { label: 'AI Refine', value: 'refine' }
+      ]);
+      if (choice === 'manual') {
+        currentTitle = await askQuestion('New Title: ');
+      } else {
+        const instruction = await askQuestion('Refinement instruction: ');
         log('→ Refining...', 'yellow');
-        const res = await callReadmeApi({
+        const res = await callPRApi({
           action: 'refine',
           draftId: draft.draftId,
-          currentContent,
-          instruction
+          field: 'title',
+          currentContent: currentTitle,
+          instruction,
+          fullContext: { title: currentTitle, body: currentBody }
         });
-        currentContent = res.content;
+        currentTitle = res.content;
       }
     }
-  }
 
-  async function main() {
-    const args = process.argv.slice(2);
-    const command = args[0];
-
-    switch (command) {
-      case 'init':
-        commandInit();
-        break;
-
-      case 'auth':
-        await commandAuth();
-        break;
-
-      case 'verify':
-        await commandVerify();
-        break;
-
-      case 'logout':
-        commandLogout();
-        break;
-
-      case 'commit': {
-        let historicalCount = 0;
-        const historicalIndex = args.indexOf('--historical');
-
-        if (historicalIndex !== -1) {
-          const nextArg = args[historicalIndex + 1];
-          if (nextArg && nextArg.startsWith('--')) {
-            const countMatch = nextArg.match(/^--(\d+)$/);
-            if (countMatch) {
-              historicalCount = parseInt(countMatch[1]);
-              if (historicalCount < 5) historicalCount = 5;
-              if (historicalCount > 20) historicalCount = 20;
-            }
-          } else {
-            historicalCount = 10;
-          }
-        }
-
-        const options = {
-          staged: args.includes('--staged'),
-          all: args.includes('--all'),
-          custom: args.includes('--custom'),
-          historical: historicalCount
-        };
-
-        await commandCommit(options);
-        break;
+    if (action === 'body') {
+      const choice = await selectOption('Body Action:', [
+        { label: 'Edit Manually (Editor)', value: 'manual' },
+        { label: 'AI Refine', value: 'refine' }
+      ]);
+      if (choice === 'manual') {
+        currentBody = openInEditor(currentBody);
+      } else {
+        const instruction = await askQuestion('Refinement instruction: ');
+        log('→ Refining...', 'yellow');
+        const res = await callPRApi({
+          action: 'refine',
+          draftId: draft.draftId,
+          field: 'description',
+          currentContent: currentBody,
+          instruction,
+          fullContext: { title: currentTitle, body: currentBody }
+        });
+        currentBody = res.content;
       }
+    }
 
-      case 'issue':
-        const issueOptions = {
-          custom: args.includes('--custom'),
-          close: args.includes('--close')
-        };
-        await commandIssue(issueOptions);
-        break;
+    if (action === 'labels') {
+      // Reuse label logic (simplified for brevity in this replacement)
+      const existing = getExistingLabels();
+      log('\nAvailable Labels:', 'cyan');
+      existing.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
+      const sel = await askQuestion('Select labels (numbers, comma sep) or type new: ');
+      // ... (Assume user enters numbers for now)
+      const indices = sel.split(',').map(s => parseInt(s.trim()) - 1);
+      currentLabels = indices.map(i => existing[i]).filter(l => l);
+    }
 
-      case 'pr':
-        const prOptions = {
-          custom: args.includes('--custom')
-        };
-        await commandPR(prOptions);
-        break;
+    if (action === 'milestone') {
+      const milestones = getMilestones();
+      if (milestones.length === 0) {
+        log('No milestones found.', 'yellow');
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        log('\nAvailable Milestones:', 'cyan');
+        milestones.forEach((m, i) => log(`${i + 1}. ${m}`, 'reset'));
+        const selection = await askQuestion('Select milestone (number): ');
+        const idx = parseInt(selection) - 1;
+        if (idx >= 0 && idx < milestones.length) selectedMilestone = milestones[idx];
+      }
+    }
 
-      case 'readme':
-        const readmeOptions = {
-          custom: args.includes('--custom')
-        };
-        await commandReadme(readmeOptions);
-        break;
+    if (action === 'assignees') {
+      const assignees = getAssignees();
+      if (assignees.length === 0) {
+        log('No assignees found.', 'yellow');
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        log('\nAvailable Assignees:', 'cyan');
+        assignees.forEach((a, i) => log(`${i + 1}. ${a}`, 'reset'));
+        const selection = await askQuestion('Select assignees (numbers, comma sep): ');
+        const indices = selection.split(',').map(s => parseInt(s.trim()) - 1);
+        selectedAssignees = indices.map(i => assignees[i]).filter(a => a);
+      }
+    }
 
-      case 'status':
-        commandStatus();
-        break;
+    if (action === 'reviewers') {
+      const reviewers = getReviewers();
+      if (reviewers.length === 0) {
+        log('No reviewers found.', 'yellow');
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        log('\nAvailable Reviewers:', 'cyan');
+        reviewers.forEach((r, i) => log(`${i + 1}. ${r}`, 'reset'));
+        const selection = await askQuestion('Select reviewers (numbers, comma sep): ');
+        const indices = selection.split(',').map(s => parseInt(s.trim()) - 1);
+        selectedReviewers = indices.map(i => reviewers[i]).filter(r => r);
+      }
+    }
 
-      case 'tree': {
-        const excludePatterns = [];
-        let useGitignore = false;
+    if (action === 'create') {
+      log('\n→ Creating PR on GitHub...', 'cyan');
 
-        for (let i = 1; i < args.length; i++) {
-          if (args[i] === '--flag') {
-            if (args[i + 1] === '--gitignore') {
-              useGitignore = true;
-              i++;
-            } else if (args[i + 1]) {
-              const pattern = args[i + 1];
-              excludePatterns.push(pattern);
-              i++;
-            }
-          }
-        }
+      // Create temporary file for body
+      const tmpFile = path.join(os.tmpdir(), `gitset-pr-${Date.now()}.md`);
+      fs.writeFileSync(tmpFile, currentBody);
 
-        if (useGitignore) {
-          const gitignorePatterns = parseGitignore();
-          excludePatterns.push(...gitignorePatterns);
-          log('\n📂 Project structure (excluding .gitignore patterns):\n', 'blue');
-          log(`Loaded ${gitignorePatterns.length} patterns from .gitignore\n`, 'yellow');
-        } else if (excludePatterns.length > 0) {
-          log('\n📂 Project structure (with exclusions):\n', 'blue');
-          log(`Excluding: ${excludePatterns.join(', ')}\n`, 'yellow');
+      const labelArgs = currentLabels.map(l => `-l "${l.name || l}"`).join(' ');
+      const milestoneArg = selectedMilestone ? `-m "${selectedMilestone}"` : '';
+      const assigneeArg = selectedAssignees.length > 0 ? `-a "${selectedAssignees.join(',')}"` : '';
+      const reviewerArg = selectedReviewers.length > 0 ? `-r "${selectedReviewers.join(',')}"` : '';
+      const draftArg = isDraft ? '--draft' : '';
+      const baseArg = `-B "${targetBranch}"`;
+
+      const cmd = `gh pr create -t "${currentTitle}" -F "${tmpFile}" ${baseArg} ${labelArgs} ${milestoneArg} ${assigneeArg} ${reviewerArg} ${draftArg}`;
+
+      try {
+        const url = execCommand(cmd);
+        if (url) {
+          log(`\n✓ PR created successfully!`, 'green');
+          log(`🔗 URL: ${url}`, 'blue');
         } else {
-          log('\n📂 Project structure:\n', 'blue');
+          log('\n✗ Failed to create PR via gh CLI', 'red');
         }
-
-        const stats = commandTree('.', '', {
-          excludePatterns,
-          stats: { dirs: 0, files: 0 }
-        });
-
-        log(`\n${stats.dirs} directories, ${stats.files} files\n`, 'cyan');
-        break;
+      } catch (error) {
+        log(`\n✗ Error creating PR: ${error.message}`, 'red');
+      } finally {
+        if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
       }
+      break;
+    }
+  }
+}
 
-      case 'template':
-        commandTemplate(args[1]);
-        break;
+async function commandIssue(options = {}) {
+  if (!isGitRepo()) {
+    log('✗ Not in a Git repository', 'red');
+    return;
+  }
 
-      case 'help':
-      case undefined:
-        showHelp();
-        break;
+  const gitsetKey = getGitsetKey();
+  if (!gitsetKey) {
+    log('✗ Not authenticated. Use: gitset auth', 'red');
+    return;
+  }
 
-      default:
-        log(`✗ Unknown command: ${command}`, 'red');
-        showHelp();
+  if (options.close) {
+    await closeIssueInteractive();
+    return;
+  }
+
+  log('\n=== Gitset Issue Crafter ===', 'blue');
+
+  // 1. Initial Description
+  const description = await askQuestion('Describe the issue (what, why, how): ');
+  if (!description) return;
+
+  let customTemplate = null;
+  if (options.custom) {
+    customTemplate = loadIssueTemplate();
+    if (customTemplate) {
+      log('→ Using custom issue template', 'magenta');
+    } else {
+      log('⚠️  No custom issue template found. Run gitset init', 'yellow');
     }
   }
 
-  main().catch(err => {
-    log(`✗ Fatal error: ${err.message}`, 'red');
-    process.exit(1);
+  log('\n→ Generating draft with AI...', 'yellow');
+
+  let draft;
+  try {
+    draft = await callIssueApi({
+      action: 'generate',
+      description,
+      repoContext: getRepoUrl(),
+      custom_template: customTemplate
+    });
+  } catch (error) {
+    log(`✗ Error: ${error.message}`, 'red');
+    return;
+  }
+
+  let currentTitle = draft.title;
+  let currentBody = draft.body;
+  let currentLabels = [];
+  let draftId = draft.draftId;
+  let selectedMilestone = null;
+  let selectedAssignees = [];
+
+  // Wizard Loop
+  while (true) {
+    console.clear();
+    log('=== Issue Draft ===', 'blue');
+    log(`\nTITLE: ${currentTitle}`, 'green');
+    log(`\nLABELS: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'magenta');
+    log(`MILESTONE: ${selectedMilestone || 'None'}`, 'magenta');
+    log(`ASSIGNEES: ${selectedAssignees.join(', ') || 'None'}`, 'magenta');
+    log(`\nBODY PREVIEW:\n${currentBody.substring(0, 300)}...\n(Full body hidden for brevity)`, 'reset');
+
+    const action = await selectOption('What would you like to do?', [
+      { label: 'Confirm & Create Issue', value: 'create' },
+      { label: 'Edit/Refine Title', value: 'title' },
+      { label: 'Edit/Refine Description', value: 'body' },
+      { label: 'Manage Labels', value: 'labels' },
+      { label: 'Set Milestone', value: 'milestone' },
+      { label: 'Set Assignees', value: 'assignees' },
+      { label: 'Save to File', value: 'save' },
+      { label: 'Cancel', value: 'cancel' }
+    ]);
+
+    if (action === 'cancel') {
+      log('Cancelled.', 'yellow');
+      break;
+    }
+
+    if (action === 'save') {
+      const filename = await askQuestion('Filename (e.g. draft.md): ');
+      if (filename) {
+        fs.writeFileSync(filename, `# ${currentTitle}\n\n${currentBody}`);
+        log(`✓ Saved to ${filename}`, 'green');
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    if (action === 'milestone') {
+      const milestones = getMilestones();
+      if (milestones.length === 0) {
+        log('No milestones found.', 'yellow');
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        log('\nAvailable Milestones:', 'cyan');
+        milestones.forEach((m, i) => log(`${i + 1}. ${m}`, 'reset'));
+        const selection = await askQuestion('Select milestone (number): ');
+        const idx = parseInt(selection) - 1;
+        if (idx >= 0 && idx < milestones.length) {
+          selectedMilestone = milestones[idx];
+        }
+      }
+    }
+
+    if (action === 'assignees') {
+      const assignees = getAssignees();
+      if (assignees.length === 0) {
+        log('No assignees found.', 'yellow');
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        log('\nAvailable Assignees:', 'cyan');
+        assignees.forEach((a, i) => log(`${i + 1}. ${a}`, 'reset'));
+        const selection = await askQuestion('Select assignees (numbers separated by comma, e.g. 1,2): ');
+        const indices = selection.split(',').map(s => parseInt(s.trim()) - 1);
+        selectedAssignees = indices.map(i => assignees[i]).filter(a => a);
+      }
+    }
+
+    if (action === 'create') {
+      log('\n→ Creating issue on GitHub...', 'cyan');
+
+      // Ensure labels exist
+      const existingLabels = getExistingLabels();
+      for (const label of currentLabels) {
+        const labelName = label.name || label;
+        if (!existingLabels.includes(labelName)) {
+          log(`→ Creating label: ${labelName}`, 'yellow');
+          const color = label.color ? `--color "${label.color}"` : '';
+          const desc = label.description ? `--description "${label.description}"` : '';
+          try {
+            execCommand(`gh label create "${labelName}" ${color} ${desc}`);
+          } catch (e) {
+            log(`⚠️ Failed to create label ${labelName}: ${e.message}`, 'yellow');
+          }
+        }
+      }
+
+      // Create temporary file for body
+      const tmpFile = path.join(os.tmpdir(), `gitset-issue-${Date.now()}.md`);
+      fs.writeFileSync(tmpFile, currentBody);
+
+      const labelArgs = currentLabels.map(l => `-l "${l.name || l}"`).join(' ');
+      const milestoneArg = selectedMilestone ? `-m "${selectedMilestone}"` : '';
+      const assigneeArg = selectedAssignees.length > 0 ? `-a "${selectedAssignees.join(',')}"` : '';
+
+      const cmd = `gh issue create -t "${currentTitle}" -F "${tmpFile}" ${labelArgs} ${milestoneArg} ${assigneeArg}`;
+
+      try {
+        const url = execCommand(cmd);
+        if (url) {
+          log(`\n✓ Issue created successfully!`, 'green');
+          log(`🔗 URL: ${url}`, 'blue');
+
+          // Branch creation prompt
+          const issueNumber = url.split('/').pop();
+          const createBranch = await askQuestion('\nCreate a branch for this issue? (y/n): ');
+          if (createBranch.toLowerCase() === 'y') {
+            // Sanitize title for branch name
+            const sanitizedTitle = currentTitle
+              .toLowerCase()
+              .replace(/[^a-z0-9\s-]/g, '') // Remove special chars
+              .trim()
+              .replace(/\s+/g, '-') // Replace spaces with dashes
+              .substring(0, 50); // Limit length
+
+            const branchName = `feat/${issueNumber}-${sanitizedTitle}`;
+
+            try {
+              execCommand(`git checkout -b ${branchName}`);
+              log(`✓ Switched to new branch: ${branchName}`, 'green');
+            } catch (e) {
+              log(`✗ Failed to create branch: ${e.message}`, 'red');
+            }
+          }
+
+        } else {
+          log('\n✗ Failed to create issue via gh CLI', 'red');
+          log('  Command output was empty. Ensure gh is authenticated.', 'yellow');
+        }
+      } catch (error) {
+        log(`\n✗ Error creating issue: ${e.message}`, 'red');
+      } finally {
+        if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+      }
+      break;
+    }
+
+    if (action === 'title') {
+      const subAction = await selectOption('Title Options:', [
+        { label: 'Manual Edit', value: 'manual' },
+        { label: 'AI Refine', value: 'ai' },
+        { label: 'View History', value: 'history' },
+        { label: 'Back', value: 'back' }
+      ]);
+
+      if (subAction === 'manual') {
+        const newTitle = await askQuestion(`Current: ${currentTitle}\nNew Title: `);
+        if (newTitle) currentTitle = newTitle;
+      } else if (subAction === 'ai') {
+        const instruction = await askQuestion('How should the AI refine the title? ');
+        log('→ Refining...', 'yellow');
+        const result = await callIssueApi({
+          action: 'refine',
+          draftId,
+          field: 'title',
+          currentContent: currentTitle,
+          instruction,
+          fullIssueContext: { title: currentTitle, body: currentBody }
+        });
+        currentTitle = result.content;
+      } else if (subAction === 'history') {
+        const history = await callIssueApi({ action: 'history', draftId, field: 'title' });
+        log('\nHistory:', 'cyan');
+        history.history.forEach((h, i) => log(`${i + 1}. ${h.content}`, 'reset'));
+        await askQuestion('Press Enter to continue...');
+      }
+    }
+
+    if (action === 'body') {
+      const subAction = await selectOption('Description Options:', [
+        { label: 'Open in Editor', value: 'editor' },
+        { label: 'AI Refine', value: 'ai' },
+        { label: 'View History', value: 'history' },
+        { label: 'Back', value: 'back' }
+      ]);
+
+      if (subAction === 'editor') {
+        currentBody = openInEditor(currentBody);
+      } else if (subAction === 'ai') {
+        const instruction = await askQuestion('How should the AI refine the description? ');
+        log('→ Refining...', 'yellow');
+        const result = await callIssueApi({
+          action: 'refine',
+          draftId,
+          field: 'description',
+          currentContent: currentBody,
+          instruction,
+          fullIssueContext: { title: currentTitle, body: currentBody }
+        });
+        currentBody = result.content;
+      } else if (subAction === 'history') {
+        const history = await callIssueApi({ action: 'history', draftId, field: 'description' });
+        log('\nHistory (Versions):', 'cyan');
+        history.history.forEach((h, i) => log(`${i + 1}. Version ${h.version_number} (${new Date(h.created_at).toLocaleTimeString()})`, 'reset'));
+
+        const restore = await askQuestion('Restore a version? (Enter number or 0 to cancel): ');
+        const idx = parseInt(restore) - 1;
+        if (idx >= 0 && idx < history.history.length) {
+          currentBody = history.history[idx].content;
+          log('✓ Restored', 'green');
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+    }
+
+    if (action === 'labels') {
+      const subAction = await selectOption('Label Options:', [
+        { label: 'AI Suggest', value: 'ai' },
+        { label: 'Select Existing', value: 'select' },
+        { label: 'Clear All', value: 'clear' },
+        { label: 'Back', value: 'back' }
+      ]);
+
+      if (subAction === 'ai') {
+        log('→ Analyzing...', 'yellow');
+        const existing = getExistingLabels();
+        const result = await callIssueApi({
+          action: 'labels',
+          title: currentTitle,
+          body: currentBody,
+          existingLabels: existing
+        });
+        currentLabels = result.labels;
+      } else if (subAction === 'select') {
+        const existing = getExistingLabels();
+        if (existing.length === 0) {
+          log('No existing labels found.', 'yellow');
+        } else {
+          log('Existing Labels:', 'cyan');
+          existing.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
+          const selection = await askQuestion('Enter numbers separated by comma (e.g. 1,3): ');
+          const indices = selection.split(',').map(s => parseInt(s.trim()) - 1);
+          const selected = indices.map(i => existing[i]).filter(l => l);
+          currentLabels = [...currentLabels, ...selected.map(name => ({ name }))];
+        }
+        await new Promise(r => setTimeout(r, 1000));
+      } else if (subAction === 'clear') {
+        currentLabels = [];
+      }
+    }
+  }
+}
+
+function loadReadmeTemplate() {
+  const templatePath = path.join(CONFIG_DIR, 'README-TEMPLATE.md');
+  if (fs.existsSync(templatePath)) {
+    return fs.readFileSync(templatePath, 'utf8');
+  }
+  return null;
+}
+
+// --- README Generator ---
+const { analyzeRepo } = require('./src/utils/repo-analyzer');
+const { generateBadges } = require('./src/utils/badge-generator');
+const { getLicenseList, generateLicenseFile } = require('./src/utils/license-generator');
+
+async function callReadmeApi(payload) {
+  const gitsetKey = getGitsetKey();
+  const response = await fetch(`${BACKEND_URL.replace('/commit', '/readme')}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...payload, gitset_key: gitsetKey })
   });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'API request failed');
+  }
+
+  return await response.json();
+}
+
+async function commandReadme(options = {}) {
+  if (!isGitRepo()) {
+    log('✗ Not in a Git repository', 'red');
+    return;
+  }
+
+  const gitsetKey = getGitsetKey();
+  if (!gitsetKey) {
+    log('✗ Not authenticated. Use: gitset auth', 'red');
+    return;
+  }
+
+  log('\n=== Gitset README Generator ===', 'blue');
+
+  // 1. Analyze Repo
+  log('→ Analyzing repository...', 'yellow');
+  const analysis = analyzeRepo(process.cwd());
+  log(`✓ Detected: ${analysis.language} (${analysis.packageManager})`, 'green');
+  if (analysis.frameworks.length) log(`  Frameworks: ${analysis.frameworks.join(', ')}`, 'green');
+
+  // 2. License Check
+  if (!analysis.hasLicense) {
+    const addLicense = await askQuestion('\n⚠️  No LICENSE found. Add one? (y/n): ');
+    if (addLicense.toLowerCase() === 'y') {
+      const licenses = getLicenseList();
+      log('Available Licenses:', 'cyan');
+      licenses.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
+      const sel = await askQuestion('Select license (number): ');
+      const idx = parseInt(sel) - 1;
+      if (idx >= 0 && idx < licenses.length) {
+        const author = await askQuestion('Author Name: ');
+        const year = new Date().getFullYear();
+        generateLicenseFile(licenses[idx], author, year, process.cwd());
+        log('✓ LICENSE file created.', 'green');
+        analysis.hasLicense = true;
+      }
+    }
+  }
+
+  // 3. Generate Content
+  let customTemplate = null;
+  if (options.custom) {
+    customTemplate = loadReadmeTemplate();
+    if (customTemplate) log('→ Using custom README template', 'magenta');
+  }
+
+  log('\n→ Generating README with AI...', 'yellow');
+
+  let draft;
+  try {
+    draft = await callReadmeApi({
+      action: 'generate',
+      analysis,
+      custom_template: customTemplate
+    });
+  } catch (error) {
+    log(`✗ Error: ${error.message}`, 'red');
+    return;
+  }
+
+  let currentContent = draft.content;
+  const badges = generateBadges(analysis);
+
+  // Prepend badges if not present
+  if (!currentContent.includes('img.shields.io')) {
+    currentContent = `# ${analysis.name}\n\n${badges}\n\n${currentContent.replace(/^# .*\n/, '')}`;
+  }
+
+  // Wizard Loop
+  while (true) {
+    console.clear();
+    log('=== README Draft ===', 'blue');
+    log(`\nPREVIEW (First 500 chars):\n${currentContent.substring(0, 500)}...\n`, 'reset');
+
+    const action = await selectOption('What would you like to do?', [
+      { label: 'Save & Exit', value: 'save' },
+      { label: 'Refine Section', value: 'refine' },
+      { label: 'View Full Preview', value: 'preview' },
+      { label: 'Cancel', value: 'cancel' }
+    ]);
+
+    if (action === 'cancel') {
+      log('Cancelled.', 'yellow');
+      break;
+    }
+
+    if (action === 'save') {
+      const filename = 'README.md';
+      if (fs.existsSync(filename)) {
+        const overwrite = await askQuestion('README.md exists. Overwrite? (y/n): ');
+        if (overwrite.toLowerCase() !== 'y') break;
+      }
+      fs.writeFileSync(filename, currentContent);
+      log(`✓ Saved to ${filename}`, 'green');
+      break;
+    }
+
+    if (action === 'preview') {
+      console.log('\n' + '-'.repeat(50));
+      console.log(currentContent);
+      console.log('-'.repeat(50) + '\n');
+      await askQuestion('Press Enter to continue...');
+    }
+
+    if (action === 'refine') {
+      const instruction = await askQuestion('Refinement instruction (e.g., "Expand Installation section"): ');
+      log('→ Refining...', 'yellow');
+      const res = await callReadmeApi({
+        action: 'refine',
+        draftId: draft.draftId,
+        currentContent,
+        instruction
+      });
+      currentContent = res.content;
+    }
+  }
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const command = args[0];
+
+  switch (command) {
+    case 'init':
+      commandInit();
+      break;
+
+    case 'auth':
+      await commandAuth();
+      break;
+
+    case 'verify':
+      await commandVerify();
+      break;
+
+    case 'logout':
+      commandLogout();
+      break;
+
+    case 'commit': {
+      let historicalCount = 0;
+      const historicalIndex = args.indexOf('--historical');
+
+      if (historicalIndex !== -1) {
+        const nextArg = args[historicalIndex + 1];
+        if (nextArg && nextArg.startsWith('--')) {
+          const countMatch = nextArg.match(/^--(\d+)$/);
+          if (countMatch) {
+            historicalCount = parseInt(countMatch[1]);
+            if (historicalCount < 5) historicalCount = 5;
+            if (historicalCount > 20) historicalCount = 20;
+          }
+        } else {
+          historicalCount = 10;
+        }
+      }
+
+      const options = {
+        staged: args.includes('--staged'),
+        all: args.includes('--all'),
+        custom: args.includes('--custom'),
+        historical: historicalCount
+      };
+
+      await commandCommit(options);
+      break;
+    }
+
+    case 'issue':
+      const issueOptions = {
+        custom: args.includes('--custom'),
+        close: args.includes('--close')
+      };
+      await commandIssue(issueOptions);
+      break;
+
+    case 'pr':
+      const prOptions = {
+        custom: args.includes('--custom')
+      };
+      await commandPR(prOptions);
+      break;
+
+    case 'readme':
+      const readmeOptions = {
+        custom: args.includes('--custom')
+      };
+      await commandReadme(readmeOptions);
+      break;
+
+    case 'status':
+      commandStatus();
+      break;
+
+    case 'tree': {
+      const excludePatterns = [];
+      let useGitignore = false;
+
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--flag') {
+          if (args[i + 1] === '--gitignore') {
+            useGitignore = true;
+            i++;
+          } else if (args[i + 1]) {
+            const pattern = args[i + 1];
+            excludePatterns.push(pattern);
+            i++;
+          }
+        }
+      }
+
+      if (useGitignore) {
+        const gitignorePatterns = parseGitignore();
+        excludePatterns.push(...gitignorePatterns);
+        log('\n📂 Project structure (excluding .gitignore patterns):\n', 'blue');
+        log(`Loaded ${gitignorePatterns.length} patterns from .gitignore\n`, 'yellow');
+      } else if (excludePatterns.length > 0) {
+        log('\n📂 Project structure (with exclusions):\n', 'blue');
+        log(`Excluding: ${excludePatterns.join(', ')}\n`, 'yellow');
+      } else {
+        log('\n📂 Project structure:\n', 'blue');
+      }
+
+      const stats = commandTree('.', '', {
+        excludePatterns,
+        stats: { dirs: 0, files: 0 }
+      });
+
+      log(`\n${stats.dirs} directories, ${stats.files} files\n`, 'cyan');
+      break;
+    }
+
+    case 'template':
+      commandTemplate(args[1]);
+      break;
+
+    case 'help':
+    case undefined:
+      showHelp();
+      break;
+
+    default:
+      log(`✗ Unknown command: ${command}`, 'red');
+      showHelp();
+  }
+}
+
+main().catch(err => {
+  log(`✗ Fatal error: ${err.message}`, 'red');
+  process.exit(1);
+});
