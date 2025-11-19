@@ -796,6 +796,14 @@ function loadIssueTemplate() {
   return null;
 }
 
+function loadReadmeTemplate() {
+  const templatePath = path.join(CONFIG_DIR, 'README-TEMPLATE.md');
+  if (fs.existsSync(templatePath)) {
+    return fs.readFileSync(templatePath, 'utf8');
+  }
+  return null;
+}
+
 function getAssignees() {
   try {
     // Fetch collaborators who can be assigned
@@ -1447,297 +1455,286 @@ async function commandIssue(options = {}) {
         currentLabels = [];
       }
     }
-
-    const readmeTemplatePath = path.join(CONFIG_DIR, 'README-TEMPLATE.md');
-    if (!fs.existsSync(readmeTemplatePath)) {
-      const defaultReadmeTemplate = `# {{PROJECT_NAME}}
-
-{{DESCRIPTION}}
-
-## Features
-- Feature 1
-- Feature 2
-
-## Installation
-\`\`\`bash
-npm install
-\`\`\`
-
-## Usage
-\`\`\`bash
-npm start
-\`\`\`
-`;
-      fs.writeFileSync(readmeTemplatePath, defaultReadmeTemplate);
-      log('✓ Created ~/.gitset/README-TEMPLATE.md', 'green');
-    } else {
-      log('✓ ~/.gitset/README-TEMPLATE.md already exists', 'green');
-    }
   }
+}
 
-  function loadReadmeTemplate() {
-    const templatePath = path.join(CONFIG_DIR, 'README-TEMPLATE.md');
-    if (fs.existsSync(templatePath)) {
-      return fs.readFileSync(templatePath, 'utf8');
-    }
-    return null;
+function loadReadmeTemplate() {
+  const templatePath = path.join(CONFIG_DIR, 'README-TEMPLATE.md');
+  if (fs.existsSync(templatePath)) {
+    return fs.readFileSync(templatePath, 'utf8');
   }
+  return null;
+}
 
-  // --- README Generator ---
-  const { analyzeRepo } = require('./src/utils/repo-analyzer');
-  const { generateBadges } = require('./src/utils/badge-generator');
-  const { getLicenseList, generateLicenseFile } = require('./src/utils/license-generator');
+// --- README Generator ---
+const { analyzeRepo } = require('./src/utils/repo-analyzer');
+const { generateBadges } = require('./src/utils/badge-generator');
+const { getLicenseList, generateLicenseFile } = require('./src/utils/license-generator');
 
-  async function callReadmeApi(payload) {
-    const gitsetKey = getGitsetKey();
-    const response = await fetch(`${BACKEND_URL.replace('/commit', '/readme')}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...payload, gitset_key: gitsetKey })
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'API request failed');
-    }
-
-    return await response.json();
-  }
-
-  async function commandReadme(options = {}) {
-    if (!isGitRepo()) {
-      log('✗ Not in a Git repository', 'red');
-      return;
-    }
-
-    const gitsetKey = getGitsetKey();
-    if (!gitsetKey) {
-      log('✗ Not authenticated. Use: gitset auth', 'red');
-      return;
-    }
-
-    log('\n=== Gitset README Generator ===', 'blue');
-
-    // 1. Analyze Repo
-    log('→ Analyzing repository...', 'yellow');
-    const analysis = analyzeRepo(process.cwd());
-    log(`✓ Detected: ${analysis.language} (${analysis.packageManager})`, 'green');
-    if (analysis.frameworks.length) log(`  Frameworks: ${analysis.frameworks.join(', ')}`, 'green');
-
-    // 2. License Check
-    if (!analysis.hasLicense) {
-      const addLicense = await askQuestion('\n⚠️  No LICENSE found. Add one? (y/n): ');
-      if (addLicense.toLowerCase() === 'y') {
-        const licenses = getLicenseList();
-        log('Available Licenses:', 'cyan');
-        licenses.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
-        const sel = await askQuestion('Select license (number): ');
-        const idx = parseInt(sel) - 1;
-        if (idx >= 0 && idx < licenses.length) {
-          const author = await askQuestion('Author Name: ');
-          const year = new Date().getFullYear();
-          generateLicenseFile(licenses[idx], author, year, process.cwd());
-          log('✓ LICENSE file created.', 'green');
-          analysis.hasLicense = true;
-        }
-      }
-    }
-
-    // 3. Generate Content
-    let customTemplate = null;
-    if (options.custom) {
-      customTemplate = loadReadmeTemplate();
-      if (customTemplate) log('→ Using custom README template', 'magenta');
-    }
-
-    log('\n→ Generating README with AI...', 'yellow');
-
-    let draft;
-    try {
-      draft = await callReadmeApi({
-        action: 'generate',
-        analysis,
-        custom_template: customTemplate
-      });
-    } catch (error) {
-      log(`✗ Error: ${error.message}`, 'red');
-      return;
-    }
-
-    let currentContent = draft.content;
-    const badges = generateBadges(analysis);
-
-    // Prepend badges if not present
-    if (!currentContent.includes('img.shields.io')) {
-      currentContent = `# ${analysis.name}\n\n${badges}\n\n${currentContent.replace(/^# .*\n/, '')}`;
-    }
-
-    // Wizard Loop
-    while (true) {
-      console.clear();
-      log('=== README Draft ===', 'blue');
-      log(`\nPREVIEW (First 500 chars):\n${currentContent.substring(0, 500)}...\n`, 'reset');
-
-      const action = await selectOption('What would you like to do?', [
-        { label: 'Save & Exit', value: 'save' },
-        { label: 'Refine Section', value: 'refine' },
-        { label: 'View Full Preview', value: 'preview' },
-        { label: 'Cancel', value: 'cancel' }
-      ]);
-
-      if (action === 'cancel') {
-        log('Cancelled.', 'yellow');
-        break;
-      }
-
-      if (action === 'save') {
-        const filename = 'README.md';
-        if (fs.existsSync(filename)) {
-          const overwrite = await askQuestion('README.md exists. Overwrite? (y/n): ');
-          if (overwrite.toLowerCase() !== 'y') break;
-        }
-        fs.writeFileSync(filename, currentContent);
-        log(`✓ Saved to ${filename}`, 'green');
-        break;
-      }
-
-      if (action === 'preview') {
-        console.log('\n' + '-'.repeat(50));
-        console.log(currentContent);
-        console.log('-'.repeat(50) + '\n');
-        await askQuestion('Press Enter to continue...');
-      }
-
-      if (action === 'refine') {
-        const instruction = await askQuestion('Refinement instruction (e.g., "Expand Installation section"): ');
-        log('→ Refining...', 'yellow');
-        const res = await callReadmeApi({
-          action: 'refine',
-          draftId: draft.draftId,
-          currentContent,
-          instruction
-        });
-        currentContent = res.content;
-      }
-    }
-  }
-
-  async function main() {
-    const args = process.argv.slice(2);
-    const command = args[0];
-
-    switch (command) {
-      case 'init':
-        commandInit();
-        break;
-
-      case 'auth':
-        await commandAuth();
-        break;
-
-      case 'verify':
-        await commandVerify();
-        break;
-
-      case 'logout':
-        commandLogout();
-        break;
-
-      case 'commit': {
-        let historicalCount = 0;
-        const historicalIndex = args.indexOf('--historical');
-
-        if (historicalIndex !== -1) {
-          const nextArg = args[historicalIndex + 1];
-          if (nextArg && nextArg.startsWith('--')) {
-            const countMatch = nextArg.match(/^--(\d+)$/);
-            if (countMatch) {
-              historicalCount = parseInt(countMatch[1]);
-              if (historicalCount < 5) historicalCount = 5;
-              if (historicalCount > 20) historicalCount = 20;
-            }
-          } else {
-            historicalCount = 10;
-          }
-        }
-
-        const options = {
-          staged: args.includes('--staged'),
-          all: args.includes('--all'),
-          custom: args.includes('--custom'),
-          historical: historicalCount
-        };
-
-        await commandCommit(options);
-        break;
-      }
-
-      case 'issue':
-        const options = {
-          custom: args.includes('--custom'),
-          close: args.includes('--close')
-        };
-        await commandIssue(options);
-        break;
-
-      case 'status':
-        commandStatus();
-        break;
-
-      case 'tree': {
-        const excludePatterns = [];
-        let useGitignore = false;
-
-        for (let i = 1; i < args.length; i++) {
-          if (args[i] === '--flag') {
-            if (args[i + 1] === '--gitignore') {
-              useGitignore = true;
-              i++;
-            } else if (args[i + 1]) {
-              const pattern = args[i + 1];
-              excludePatterns.push(pattern);
-              i++;
-            }
-          }
-        }
-
-        if (useGitignore) {
-          const gitignorePatterns = parseGitignore();
-          excludePatterns.push(...gitignorePatterns);
-          log('\n📂 Project structure (excluding .gitignore patterns):\n', 'blue');
-          log(`Loaded ${gitignorePatterns.length} patterns from .gitignore\n`, 'yellow');
-        } else if (excludePatterns.length > 0) {
-          log('\n📂 Project structure (with exclusions):\n', 'blue');
-          log(`Excluding: ${excludePatterns.join(', ')}\n`, 'yellow');
-        } else {
-          log('\n📂 Project structure:\n', 'blue');
-        }
-
-        const stats = commandTree('.', '', {
-          excludePatterns,
-          stats: { dirs: 0, files: 0 }
-        });
-
-        log(`\n${stats.dirs} directories, ${stats.files} files\n`, 'cyan');
-        break;
-      }
-
-      case 'template':
-        commandTemplate(args[1]);
-        break;
-
-      case 'help':
-      case undefined:
-        showHelp();
-        break;
-
-      default:
-        log(`✗ Unknown command: ${command}`, 'red');
-        showHelp();
-    }
-  }
-
-  main().catch(err => {
-    log(`✗ Fatal error: ${err.message}`, 'red');
-    process.exit(1);
+async function callReadmeApi(payload) {
+  const gitsetKey = getGitsetKey();
+  const response = await fetch(`${BACKEND_URL.replace('/commit', '/readme')}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...payload, gitset_key: gitsetKey })
   });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'API request failed');
+  }
+
+  return await response.json();
+}
+
+async function commandReadme(options = {}) {
+  if (!isGitRepo()) {
+    log('✗ Not in a Git repository', 'red');
+    return;
+  }
+
+  const gitsetKey = getGitsetKey();
+  if (!gitsetKey) {
+    log('✗ Not authenticated. Use: gitset auth', 'red');
+    return;
+  }
+
+  log('\n=== Gitset README Generator ===', 'blue');
+
+  // 1. Analyze Repo
+  log('→ Analyzing repository...', 'yellow');
+  const analysis = analyzeRepo(process.cwd());
+  log(`✓ Detected: ${analysis.language} (${analysis.packageManager})`, 'green');
+  if (analysis.frameworks.length) log(`  Frameworks: ${analysis.frameworks.join(', ')}`, 'green');
+
+  // 2. License Check
+  if (!analysis.hasLicense) {
+    const addLicense = await askQuestion('\n⚠️  No LICENSE found. Add one? (y/n): ');
+    if (addLicense.toLowerCase() === 'y') {
+      const licenses = getLicenseList();
+      log('Available Licenses:', 'cyan');
+      licenses.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
+      const sel = await askQuestion('Select license (number): ');
+      const idx = parseInt(sel) - 1;
+      if (idx >= 0 && idx < licenses.length) {
+        const author = await askQuestion('Author Name: ');
+        const year = new Date().getFullYear();
+        generateLicenseFile(licenses[idx], author, year, process.cwd());
+        log('✓ LICENSE file created.', 'green');
+        analysis.hasLicense = true;
+      }
+    }
+  }
+
+  // 3. Generate Content
+  let customTemplate = null;
+  if (options.custom) {
+    customTemplate = loadReadmeTemplate();
+    if (customTemplate) log('→ Using custom README template', 'magenta');
+  }
+
+  log('\n→ Generating README with AI...', 'yellow');
+
+  let draft;
+  try {
+    draft = await callReadmeApi({
+      action: 'generate',
+      analysis,
+      custom_template: customTemplate
+    });
+  } catch (error) {
+    log(`✗ Error: ${error.message}`, 'red');
+    return;
+  }
+
+  let currentContent = draft.content;
+  const badges = generateBadges(analysis);
+
+  // Prepend badges if not present
+  if (!currentContent.includes('img.shields.io')) {
+    currentContent = `# ${analysis.name}\n\n${badges}\n\n${currentContent.replace(/^# .*\n/, '')}`;
+  }
+
+  // Wizard Loop
+  while (true) {
+    console.clear();
+    log('=== README Draft ===', 'blue');
+    log(`\nPREVIEW (First 500 chars):\n${currentContent.substring(0, 500)}...\n`, 'reset');
+
+    const action = await selectOption('What would you like to do?', [
+      { label: 'Save & Exit', value: 'save' },
+      { label: 'Refine Section', value: 'refine' },
+      { label: 'View Full Preview', value: 'preview' },
+      { label: 'Cancel', value: 'cancel' }
+    ]);
+
+    if (action === 'cancel') {
+      log('Cancelled.', 'yellow');
+      break;
+    }
+
+    if (action === 'save') {
+      const filename = 'README.md';
+      if (fs.existsSync(filename)) {
+        const overwrite = await askQuestion('README.md exists. Overwrite? (y/n): ');
+        if (overwrite.toLowerCase() !== 'y') break;
+      }
+      fs.writeFileSync(filename, currentContent);
+      log(`✓ Saved to ${filename}`, 'green');
+      break;
+    }
+
+    if (action === 'preview') {
+      console.log('\n' + '-'.repeat(50));
+      console.log(currentContent);
+      console.log('-'.repeat(50) + '\n');
+      await askQuestion('Press Enter to continue...');
+    }
+
+    if (action === 'refine') {
+      const instruction = await askQuestion('Refinement instruction (e.g., "Expand Installation section"): ');
+      log('→ Refining...', 'yellow');
+      const res = await callReadmeApi({
+        action: 'refine',
+        draftId: draft.draftId,
+        currentContent,
+        instruction
+      });
+      currentContent = res.content;
+    }
+  }
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const command = args[0];
+
+  switch (command) {
+    case 'init':
+      commandInit();
+      break;
+
+    case 'auth':
+      await commandAuth();
+      break;
+
+    case 'verify':
+      await commandVerify();
+      break;
+
+    case 'logout':
+      commandLogout();
+      break;
+
+    case 'commit': {
+      let historicalCount = 0;
+      const historicalIndex = args.indexOf('--historical');
+
+      if (historicalIndex !== -1) {
+        const nextArg = args[historicalIndex + 1];
+        if (nextArg && nextArg.startsWith('--')) {
+          const countMatch = nextArg.match(/^--(\d+)$/);
+          if (countMatch) {
+            historicalCount = parseInt(countMatch[1]);
+            if (historicalCount < 5) historicalCount = 5;
+            if (historicalCount > 20) historicalCount = 20;
+          }
+        } else {
+          historicalCount = 10;
+        }
+      }
+
+      const options = {
+        staged: args.includes('--staged'),
+        all: args.includes('--all'),
+        custom: args.includes('--custom'),
+        historical: historicalCount
+      };
+
+      await commandCommit(options);
+      break;
+    }
+
+    case 'issue':
+      const issueOptions = {
+        custom: args.includes('--custom'),
+        close: args.includes('--close')
+      };
+      await commandIssue(issueOptions);
+      break;
+
+    case 'pr':
+      const prOptions = {
+        custom: args.includes('--custom')
+      };
+      await commandPR(prOptions);
+      break;
+
+    case 'readme':
+      const readmeOptions = {
+        custom: args.includes('--custom')
+      };
+      await commandReadme(readmeOptions);
+      break;
+
+    case 'status':
+      commandStatus();
+      break;
+
+    case 'tree': {
+      const excludePatterns = [];
+      let useGitignore = false;
+
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--flag') {
+          if (args[i + 1] === '--gitignore') {
+            useGitignore = true;
+            i++;
+          } else if (args[i + 1]) {
+            const pattern = args[i + 1];
+            excludePatterns.push(pattern);
+            i++;
+          }
+        }
+      }
+
+      if (useGitignore) {
+        const gitignorePatterns = parseGitignore();
+        excludePatterns.push(...gitignorePatterns);
+        log('\n📂 Project structure (excluding .gitignore patterns):\n', 'blue');
+        log(`Loaded ${gitignorePatterns.length} patterns from .gitignore\n`, 'yellow');
+      } else if (excludePatterns.length > 0) {
+        log('\n📂 Project structure (with exclusions):\n', 'blue');
+        log(`Excluding: ${excludePatterns.join(', ')}\n`, 'yellow');
+      } else {
+        log('\n📂 Project structure:\n', 'blue');
+      }
+
+      const stats = commandTree('.', '', {
+        excludePatterns,
+        stats: { dirs: 0, files: 0 }
+      });
+
+      log(`\n${stats.dirs} directories, ${stats.files} files\n`, 'cyan');
+      break;
+    }
+
+    case 'template':
+      commandTemplate(args[1]);
+      break;
+
+    case 'help':
+    case undefined:
+      showHelp();
+      break;
+
+    default:
+      log(`✗ Unknown command: ${command}`, 'red');
+      showHelp();
+  }
+}
+
+main().catch(err => {
+  log(`✗ Fatal error: ${err.message}`, 'red');
+  process.exit(1);
+});
