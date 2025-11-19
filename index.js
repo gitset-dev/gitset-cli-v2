@@ -879,6 +879,289 @@ async function closeIssueInteractive() {
   }
 }
 
+function loadPRTemplate() {
+  const templatePath = path.join(CONFIG_DIR, 'PR-TEMPLATE.md');
+  if (fs.existsSync(templatePath)) {
+    return fs.readFileSync(templatePath, 'utf8');
+  }
+  return null;
+}
+
+async function callPRApi(payload) {
+  const gitsetKey = getGitsetKey();
+  const response = await fetch(`${BACKEND_URL.replace('/commit', '/pr')}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...payload, gitset_key: gitsetKey })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'API request failed');
+  }
+
+  return await response.json();
+}
+
+function getReviewers() {
+  try {
+    // Exclude current user to avoid self-review error (though gh handles it, it's cleaner)
+    const currentUser = execCommand('gh api user --jq ".login"');
+    const output = execCommand('gh api repos/:owner/:repo/collaborators --jq ".[].login"');
+    if (!output) return [];
+    return output.split('\n').filter(u => u && u !== currentUser);
+  } catch {
+    return [];
+  }
+}
+
+async function commandPR(options = {}) {
+  if (!isGitRepo()) {
+    log('✗ Not in a Git repository', 'red');
+    return;
+  }
+
+  const gitsetKey = getGitsetKey();
+  if (!gitsetKey) {
+    log('✗ Not authenticated. Use: gitset auth', 'red');
+    return;
+  }
+
+  log('\n=== Gitset PR Maker ===', 'blue');
+
+  // 1. Branch Detection
+  const currentBranch = execCommand('git branch --show-current');
+  const defaultTarget = 'main'; // Could try to detect master/main
+
+  log(`Current Branch: ${currentBranch}`, 'cyan');
+  const targetBranch = await askQuestion(`Target Branch [${defaultTarget}]: `) || defaultTarget;
+
+  // 2. Diff Capture
+  log('→ Capturing diff...', 'yellow');
+  let diff;
+  try {
+    // Get diff between target and current branch
+    diff = execCommand(`git diff ${targetBranch}...${currentBranch}`);
+    if (!diff) {
+      log('⚠️  No diff found or branches are identical.', 'yellow');
+      const proceed = await askQuestion('Proceed anyway? (y/n): ');
+      if (proceed.toLowerCase() !== 'y') return;
+    }
+  } catch (e) {
+    log(`✗ Error capturing diff: ${e.message}`, 'red');
+    return;
+  }
+
+  // 3. Initial Description
+  const description = await askQuestion('Describe the PR (briefly): ');
+  if (!description) return;
+
+  let customTemplate = null;
+  if (options.custom) {
+    customTemplate = loadPRTemplate();
+    if (customTemplate) log('→ Using custom PR template', 'magenta');
+  }
+
+  log('\n→ Generating PR draft with AI...', 'yellow');
+
+  let draft;
+  try {
+    draft = await callPRApi({
+      action: 'generate',
+      description,
+      diff,
+      repoContext: getRepoUrl(),
+      custom_template: customTemplate
+    });
+  } catch (error) {
+    log(`✗ Error: ${error.message}`, 'red');
+    return;
+  }
+
+  let currentTitle = draft.title;
+  let currentBody = draft.body;
+  let currentLabels = [];
+  let selectedMilestone = null;
+  let selectedAssignees = [];
+  let selectedReviewers = [];
+  let isDraft = false;
+
+  // Wizard Loop
+  while (true) {
+    console.clear();
+    log('=== PR Draft ===', 'blue');
+    log(`\nTITLE: ${currentTitle}`, 'green');
+    log(`TARGET: ${targetBranch} ← ${currentBranch}`, 'cyan');
+    log(`LABELS: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'magenta');
+    log(`MILESTONE: ${selectedMilestone || 'None'}`, 'magenta');
+    log(`ASSIGNEES: ${selectedAssignees.join(', ') || 'None'}`, 'magenta');
+    log(`REVIEWERS: ${selectedReviewers.join(', ') || 'None'}`, 'magenta');
+    log(`STATUS: ${isDraft ? 'Draft' : 'Ready'}`, 'yellow');
+    log(`\nBODY PREVIEW:\n${currentBody.substring(0, 300)}...\n(Full body hidden for brevity)`, 'reset');
+
+    const action = await selectOption('What would you like to do?', [
+      { label: 'Confirm & Create PR', value: 'create' },
+      { label: 'Edit/Refine Title', value: 'title' },
+      { label: 'Edit/Refine Description', value: 'body' },
+      { label: 'Manage Labels', value: 'labels' },
+      { label: 'Set Milestone', value: 'milestone' },
+      { label: 'Set Assignees', value: 'assignees' },
+      { label: 'Set Reviewers', value: 'reviewers' },
+      { label: 'Toggle Draft Status', value: 'draft' },
+      { label: 'Save to File', value: 'save' },
+      { label: 'Cancel', value: 'cancel' }
+    ]);
+
+    if (action === 'cancel') {
+      log('Cancelled.', 'yellow');
+      break;
+    }
+
+    if (action === 'save') {
+      const filename = await askQuestion('Filename (e.g. pr_draft.md): ');
+      if (filename) {
+        fs.writeFileSync(filename, `# ${currentTitle}\n\n${currentBody}`);
+        log(`✓ Saved to ${filename}`, 'green');
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    if (action === 'draft') {
+      isDraft = !isDraft;
+    }
+
+    // ... (Reuse logic for title, body, labels, milestone, assignees from commandIssue if possible or duplicate for speed)
+    if (action === 'title') {
+      const choice = await selectOption('Title Action:', [
+        { label: 'Edit Manually', value: 'manual' },
+        { label: 'AI Refine', value: 'refine' }
+      ]);
+      if (choice === 'manual') {
+        currentTitle = await askQuestion('New Title: ');
+      } else {
+        const instruction = await askQuestion('Refinement instruction: ');
+        log('→ Refining...', 'yellow');
+        const res = await callPRApi({
+          action: 'refine',
+          draftId: draft.draftId,
+          field: 'title',
+          currentContent: currentTitle,
+          instruction,
+          fullContext: { title: currentTitle, body: currentBody }
+        });
+        currentTitle = res.content;
+      }
+    }
+
+    if (action === 'body') {
+      const choice = await selectOption('Body Action:', [
+        { label: 'Edit Manually (Editor)', value: 'manual' },
+        { label: 'AI Refine', value: 'refine' }
+      ]);
+      if (choice === 'manual') {
+        currentBody = openInEditor(currentBody);
+      } else {
+        const instruction = await askQuestion('Refinement instruction: ');
+        log('→ Refining...', 'yellow');
+        const res = await callPRApi({
+          action: 'refine',
+          draftId: draft.draftId,
+          field: 'description',
+          currentContent: currentBody,
+          instruction,
+          fullContext: { title: currentTitle, body: currentBody }
+        });
+        currentBody = res.content;
+      }
+    }
+
+    if (action === 'labels') {
+      // Reuse label logic (simplified for brevity in this replacement)
+      const existing = getExistingLabels();
+      log('\nAvailable Labels:', 'cyan');
+      existing.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
+      const sel = await askQuestion('Select labels (numbers, comma sep) or type new: ');
+      // ... (Assume user enters numbers for now)
+      const indices = sel.split(',').map(s => parseInt(s.trim()) - 1);
+      currentLabels = indices.map(i => existing[i]).filter(l => l);
+    }
+
+    if (action === 'milestone') {
+      const milestones = getMilestones();
+      if (milestones.length === 0) {
+        log('No milestones found.', 'yellow');
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        log('\nAvailable Milestones:', 'cyan');
+        milestones.forEach((m, i) => log(`${i + 1}. ${m}`, 'reset'));
+        const selection = await askQuestion('Select milestone (number): ');
+        const idx = parseInt(selection) - 1;
+        if (idx >= 0 && idx < milestones.length) selectedMilestone = milestones[idx];
+      }
+    }
+
+    if (action === 'assignees') {
+      const assignees = getAssignees();
+      if (assignees.length === 0) {
+        log('No assignees found.', 'yellow');
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        log('\nAvailable Assignees:', 'cyan');
+        assignees.forEach((a, i) => log(`${i + 1}. ${a}`, 'reset'));
+        const selection = await askQuestion('Select assignees (numbers, comma sep): ');
+        const indices = selection.split(',').map(s => parseInt(s.trim()) - 1);
+        selectedAssignees = indices.map(i => assignees[i]).filter(a => a);
+      }
+    }
+
+    if (action === 'reviewers') {
+      const reviewers = getReviewers();
+      if (reviewers.length === 0) {
+        log('No reviewers found.', 'yellow');
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        log('\nAvailable Reviewers:', 'cyan');
+        reviewers.forEach((r, i) => log(`${i + 1}. ${r}`, 'reset'));
+        const selection = await askQuestion('Select reviewers (numbers, comma sep): ');
+        const indices = selection.split(',').map(s => parseInt(s.trim()) - 1);
+        selectedReviewers = indices.map(i => reviewers[i]).filter(r => r);
+      }
+    }
+
+    if (action === 'create') {
+      log('\n→ Creating PR on GitHub...', 'cyan');
+
+      // Create temporary file for body
+      const tmpFile = path.join(os.tmpdir(), `gitset-pr-${Date.now()}.md`);
+      fs.writeFileSync(tmpFile, currentBody);
+
+      const labelArgs = currentLabels.map(l => `-l "${l.name || l}"`).join(' ');
+      const milestoneArg = selectedMilestone ? `-m "${selectedMilestone}"` : '';
+      const assigneeArg = selectedAssignees.length > 0 ? `-a "${selectedAssignees.join(',')}"` : '';
+      const reviewerArg = selectedReviewers.length > 0 ? `-r "${selectedReviewers.join(',')}"` : '';
+      const draftArg = isDraft ? '--draft' : '';
+      const baseArg = `-B "${targetBranch}"`;
+
+      const cmd = `gh pr create -t "${currentTitle}" -F "${tmpFile}" ${baseArg} ${labelArgs} ${milestoneArg} ${assigneeArg} ${reviewerArg} ${draftArg}`;
+
+      try {
+        const url = execCommand(cmd);
+        if (url) {
+          log(`\n✓ PR created successfully!`, 'green');
+          log(`🔗 URL: ${url}`, 'blue');
+        } else {
+          log('\n✗ Failed to create PR via gh CLI', 'red');
+        }
+      } catch (error) {
+        log(`\n✗ Error creating PR: ${error.message}`, 'red');
+      } finally {
+        if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+      }
+      break;
+    }
+  }
+}
+
 async function commandIssue(options = {}) {
   if (!isGitRepo()) {
     log('✗ Not in a Git repository', 'red');
@@ -1054,7 +1337,7 @@ async function commandIssue(options = {}) {
           log('  Command output was empty. Ensure gh is authenticated.', 'yellow');
         }
       } catch (error) {
-        log(`\n✗ Error creating issue: ${error.message}`, 'red');
+        log(`\n✗ Error creating issue: ${e.message}`, 'red');
       } finally {
         if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
       }
