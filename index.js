@@ -359,30 +359,121 @@ async function commandCommit(options = {}) {
   log(`\n📊 Analyzing ${modeLabel} changes...\n`, 'cyan');
 
   const changesData = prepareChangesData(mode);
-
   if (!changesData) {
-    log('✗ No changes to analyze', 'yellow');
+    log('✗ No changes to analyze', 'red');
     return;
   }
 
-  log(`→ Files detected: ${changesData.files_count}`, 'blue');
+  const files = getChangedFiles(mode);
+  if (files.length > 0) {
+    log(`→ Files detected: ${files.length}`, 'yellow');
+    if (files.length < 10) {
+      files.forEach(f => log(`  ${f.status === 'A' ? '+' : f.status === 'M' ? '•' : '-'} ${f.file}`, 'reset'));
+    }
+  }
 
+  let customTemplate = null;
+  if (options.custom) {
+    customTemplate = loadTemplate();
+    if (customTemplate) log('→ Custom template loaded', 'magenta');
+  }
+
+  let currentMessage = null;
+  let usage = null;
+
+  // Initial Generation
   const result = await generateCommitMessage(changesData, {
-    customMode: options.custom,
-    historicalCount: options.historical
+    historical: options.historical,
+    customTemplate
   });
 
-  if (result) {
-    log('\n✓ Commit message generated:\n', 'green');
-    log(`📝 ${result.commit_message}\n`, 'cyan');
+  if (!result) return;
+  currentMessage = result.commit_message;
+  usage = result.usage;
 
-    if (result.quota_info) {
-      log('📈 Usage quota:', 'yellow');
-      log(`   Plan: ${result.quota_info.plan}`, 'yellow');
-      log(`   Used: ${result.quota_info.used}`, 'yellow');
-      log(`   Remaining: ${result.quota_info.remaining}`, 'yellow');
-      if (result.quota_info.renewable) {
-        log(`   Renewable: Yes (monthly)`, 'yellow');
+  // Interactive Loop
+  while (true) {
+    console.clear();
+    log('=== Commit Message Draft ===', 'blue');
+    log('\n' + '-'.repeat(50), 'reset');
+    console.log(currentMessage);
+    log('-'.repeat(50) + '\n', 'reset');
+
+    if (usage) {
+      log('📈 Usage quota:', 'magenta');
+      log(`   Plan: ${usage.plan}`, 'reset');
+      log(`   Used: ${usage.used_requests}`, 'reset');
+      log(`   Remaining: ${usage.remaining_requests}`, 'reset');
+      log(`   Renewable: ${usage.renewable ? 'Yes' : 'No'}`, 'reset');
+      log('');
+    }
+
+    const action = await selectOption('What would you like to do?', [
+      { label: 'Confirm & Commit', value: 'commit' },
+      { label: 'Refine with AI', value: 'refine' },
+      { label: 'Edit Manually', value: 'edit' },
+      { label: 'Copy to Clipboard', value: 'copy' },
+      { label: 'Cancel', value: 'cancel' }
+    ]);
+
+    if (action === 'cancel') {
+      log('Cancelled.', 'yellow');
+      break;
+    }
+
+    if (action === 'commit') {
+      try {
+        if (mode === 'all') execCommand('git add .');
+        execSync(`git commit -m "${currentMessage.replace(/"/g, '\\"')}"`, { stdio: 'inherit' });
+        log('✓ Commit successful!', 'green');
+        break;
+      } catch (err) {
+        log(`✗ Commit failed: ${err.message}`, 'red');
+        break;
+      }
+    }
+
+    if (action === 'edit') {
+      currentMessage = openInEditor(currentMessage);
+    }
+
+    if (action === 'copy') {
+      // Simple clipboard copy for Mac (pbcopy)
+      try {
+        execSync(`echo "${currentMessage.replace(/"/g, '\\"')}" | pbcopy`);
+        log('✓ Copied to clipboard!', 'green');
+        await new Promise(r => setTimeout(r, 1000));
+      } catch (e) {
+        log('✗ Failed to copy to clipboard', 'red');
+      }
+    }
+
+    if (action === 'refine') {
+      const instruction = await askQuestion('Refinement instruction (e.g. "Make it shorter", "Add more context"): ');
+      log('→ Refining...', 'yellow');
+
+      // Re-call generate but with instruction (requires backend support or simple re-prompt)
+      // For now, we'll re-generate with the instruction appended to the prompt context if backend supports it,
+      // OR we can just re-run generation with the instruction as a "custom template" override or similar.
+      // Since backend might not support "refine" action for commits yet, we'll simulate it by re-generating 
+      // and pretending the instruction is part of the context.
+
+      // Ideally, we should update the backend to handle refinement for commits too.
+      // For this step, I will re-call generateCommitMessage passing the instruction as a "hint".
+      // Note: The current generateCommitMessage doesn't explicitly take an instruction, 
+      // so I might need to hack it into the customTemplate or update the backend.
+
+      // Let's try passing it as part of the custom template for now to avoid backend changes if possible,
+      // or better, just re-run with the instruction.
+
+      const refineResult = await generateCommitMessage(changesData, {
+        historical: options.historical,
+        customTemplate: customTemplate ? `${customTemplate}\n\nIMPORTANT: ${instruction}` : `IMPORTANT: ${instruction}`
+      });
+
+      if (refineResult) {
+        currentMessage = refineResult.commit_message;
+        usage = refineResult.usage;
       }
     }
   }
@@ -1412,7 +1503,14 @@ async function commandIssue(options = {}) {
           const issueNumber = url.split('/').pop();
           const createBranch = await askQuestion('\nCreate a branch for this issue? (y/n): ');
           if (createBranch.toLowerCase() === 'y') {
-            const sanitizedTitle = currentTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            // Sanitize title for branch name
+            const sanitizedTitle = currentTitle
+              .toLowerCase()
+              .replace(/[^a-z0-9\s-]/g, '') // Remove special chars
+              .trim()
+              .replace(/\s+/g, '-') // Replace spaces with dashes
+              .substring(0, 50); // Limit length
+
             const branchName = `feat/${issueNumber}-${sanitizedTitle}`;
 
             try {
