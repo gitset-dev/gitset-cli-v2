@@ -126,6 +126,23 @@ async function commandRelease(config) {
     const commits = getCommitsSince(lastTag);
     log(`Found ${commits.length} commits since ${lastTag || 'start'}.`, 'green');
 
+    // Smart Analysis: Fetch diffs if few commits
+    if (commits.length <= 2) {
+        process.stdout.write('  ↳ Fetching detailed diffs for smart analysis... ');
+        commits = commits.map(c => {
+            // Check file count first to avoid huge diffs
+            const fileCountStr = execCommand(`git show --pretty="" --name-only ${c.hash} | wc -l`);
+            const fileCount = parseInt(fileCountStr || '0');
+
+            if (fileCount <= 5) {
+                const diff = execCommand(`git show ${c.hash}`);
+                return { ...c, diff };
+            }
+            return c;
+        });
+        console.log('Done.');
+    }
+
     // 3. Generate Notes
     log('\n🤖 Generating release notes...', 'magenta');
     let notesData = await generateReleaseNotes(commits, {

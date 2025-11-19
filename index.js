@@ -449,6 +449,24 @@ async function commandCommit(options = {}) {
 
         if (commitResult.status === 0) {
           log('✓ Commit successful!', 'green');
+
+          const push = await askQuestion('Do you want to push and sync changes? (y/n): ');
+          if (push.toLowerCase() === 'y') {
+            log('→ Pushing changes...', 'cyan');
+            try {
+              execCommand('git push');
+              log('✓ Push successful', 'green');
+
+              const sync = await askQuestion('Do you want to sync (pull) changes? (y/n): ');
+              if (sync.toLowerCase() === 'y') {
+                log('→ Syncing...', 'cyan');
+                execCommand('git pull');
+                log('✓ Sync complete', 'green');
+              }
+            } catch (e) {
+              log(`✗ Push failed: ${e.message}`, 'red');
+            }
+          }
           break;
         } else {
           log('✗ Commit failed.', 'red');
@@ -801,6 +819,14 @@ function showHelp() {
   log('  gitset commit --custom    Use custom template for generation', 'green');
   log('  gitset commit --historical --N   Use last N commits for style (5-20)', 'green');
   log('  gitset commit --historical       Use last 10 commits (default)', 'green');
+
+  log('\nPROJECT MANAGEMENT:', 'magenta');
+  log('  gitset init               Initialize Gitset templates', 'green');
+  log('  gitset issue              Create new issue with AI', 'green');
+  log('  gitset issue --close      Interactive issue closing', 'green');
+  log('  gitset pr                 Create Pull Request with AI', 'green');
+  log('  gitset release            Manage Tags & Releases', 'green');
+  log('  gitset readme             Generate/Update README', 'green');
 
   log('\nTEMPLATE MANAGEMENT:', 'magenta');
   log('  gitset template --sync    Create/update commit message template', 'green');
@@ -1161,6 +1187,139 @@ function getReviewers() {
   }
 }
 
+async function manageLabelsInteractive(currentLabels) {
+  while (true) {
+    console.clear();
+    log('=== Label Management ===', 'blue');
+    log(`Selected Labels: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'magenta');
+
+    const action = await selectOption('Choose action:', [
+      { label: 'Add/Select Existing Label', value: 'add' },
+      { label: 'Create New Label', value: 'create' },
+      { label: 'Remove Label from Selection', value: 'remove' },
+      { label: 'Edit Existing Label', value: 'edit' },
+      { label: 'Delete Label from Repo', value: 'delete' },
+      { label: 'Done', value: 'done' }
+    ]);
+
+    if (action === 'done') return currentLabels;
+
+    if (action === 'add') {
+      const existing = getExistingLabels();
+      if (existing.length === 0) {
+        log('No existing labels found.', 'yellow');
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        log('\nAvailable Labels:', 'cyan');
+        existing.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
+        const sel = await askQuestion('Select labels (numbers, comma sep): ');
+        const indices = sel.split(',').map(s => parseInt(s.trim()) - 1);
+        const selected = indices.map(i => existing[i]).filter(l => l);
+
+        selected.forEach(l => {
+          if (!currentLabels.some(cl => (cl.name || cl) === l)) {
+            currentLabels.push({ name: l });
+          }
+        });
+      }
+    }
+
+    if (action === 'create') {
+      const name = await askQuestion('Label name: ');
+      if (name) {
+        const color = await askQuestion('Color (hex, e.g. FF0000): ');
+        const desc = await askQuestion('Description: ');
+        try {
+          execCommand(`gh label create "${name}" --color "${color}" --description "${desc}"`);
+          log(`✓ Created label ${name}`, 'green');
+          currentLabels.push({ name, color, description: desc });
+        } catch (e) {
+          log(`✗ Failed to create label: ${e.message}`, 'red');
+        }
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    if (action === 'remove') {
+      if (currentLabels.length === 0) {
+        log('No labels selected.', 'yellow');
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        log('\nSelected Labels:', 'cyan');
+        currentLabels.forEach((l, i) => log(`${i + 1}. ${l.name || l}`, 'reset'));
+        const sel = await askQuestion('Select label to remove (number): ');
+        const idx = parseInt(sel) - 1;
+        if (idx >= 0 && idx < currentLabels.length) {
+          currentLabels.splice(idx, 1);
+        }
+      }
+    }
+
+    if (action === 'edit') {
+      const existing = getExistingLabels();
+      if (existing.length === 0) {
+        log('No labels to edit.', 'yellow');
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        log('\nSelect Label to Edit:', 'cyan');
+        existing.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
+        const sel = await askQuestion('Number: ');
+        const idx = parseInt(sel) - 1;
+        if (idx >= 0 && idx < existing.length) {
+          const oldName = existing[idx];
+          const newName = await askQuestion(`New name [${oldName}]: `);
+          const newColor = await askQuestion('New color: ');
+          const newDesc = await askQuestion('New description: ');
+
+          const args = [];
+          if (newName) args.push(`--name "${newName}"`);
+          if (newColor) args.push(`--color "${newColor}"`);
+          if (newDesc) args.push(`--description "${newDesc}"`);
+
+          if (args.length > 0) {
+            try {
+              execCommand(`gh label edit "${oldName}" ${args.join(' ')}`);
+              log('✓ Label updated', 'green');
+            } catch (e) {
+              log(`✗ Failed to update label: ${e.message}`, 'red');
+            }
+            await new Promise(r => setTimeout(r, 1000));
+          }
+        }
+      }
+    }
+
+    if (action === 'delete') {
+      const existing = getExistingLabels();
+      if (existing.length === 0) {
+        log('No labels to delete.', 'yellow');
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        log('\nSelect Label to DELETE (Irreversible):', 'red');
+        existing.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
+        const sel = await askQuestion('Number: ');
+        const idx = parseInt(sel) - 1;
+        if (idx >= 0 && idx < existing.length) {
+          const name = existing[idx];
+          const confirm = await askQuestion(`Are you sure you want to delete "${name}"? (y/n): `);
+          if (confirm.toLowerCase() === 'y') {
+            try {
+              execCommand(`gh label delete "${name}" --yes`);
+              log('✓ Label deleted', 'green');
+              // Remove from current if present
+              const currentIdx = currentLabels.findIndex(l => (l.name || l) === name);
+              if (currentIdx !== -1) currentLabels.splice(currentIdx, 1);
+            } catch (e) {
+              log(`✗ Failed to delete label: ${e.message}`, 'red');
+            }
+            await new Promise(r => setTimeout(r, 1000));
+          }
+        }
+      }
+    }
+  }
+}
+
 async function commandPR(options = {}) {
   if (!isGitRepo()) {
     log('✗ Not in a Git repository', 'red');
@@ -1247,6 +1406,7 @@ async function commandPR(options = {}) {
 
     const action = await selectOption('What would you like to do?', [
       { label: 'Confirm & Create PR', value: 'create' },
+      { label: 'View Full PR Content', value: 'preview' },
       { label: 'Edit/Refine Title', value: 'title' },
       { label: 'Edit/Refine Description', value: 'body' },
       { label: 'Manage Labels', value: 'labels' },
@@ -1261,6 +1421,14 @@ async function commandPR(options = {}) {
     if (action === 'cancel') {
       log('Cancelled.', 'yellow');
       break;
+    }
+
+    if (action === 'preview') {
+      console.log('\n' + '-'.repeat(50));
+      console.log(`TITLE: ${currentTitle}\n`);
+      console.log(currentBody);
+      console.log('-'.repeat(50) + '\n');
+      await askQuestion('Press Enter to continue...');
     }
 
     if (action === 'save') {
@@ -1322,14 +1490,7 @@ async function commandPR(options = {}) {
     }
 
     if (action === 'labels') {
-      // Reuse label logic (simplified for brevity in this replacement)
-      const existing = getExistingLabels();
-      log('\nAvailable Labels:', 'cyan');
-      existing.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
-      const sel = await askQuestion('Select labels (numbers, comma sep) or type new: ');
-      // ... (Assume user enters numbers for now)
-      const indices = sel.split(',').map(s => parseInt(s.trim()) - 1);
-      currentLabels = indices.map(i => existing[i]).filter(l => l);
+      currentLabels = await manageLabelsInteractive(currentLabels);
     }
 
     if (action === 'milestone') {
@@ -1395,6 +1556,56 @@ async function commandPR(options = {}) {
         if (url) {
           log(`\n✓ PR created successfully!`, 'green');
           log(`🔗 URL: ${url}`, 'blue');
+
+          // Post-creation menu
+          while (true) {
+            const postAction = await selectOption('\nPR Created. What next?', [
+              { label: 'View in Browser', value: 'view' },
+              { label: 'Merge PR', value: 'merge' },
+              { label: 'Close PR', value: 'close' },
+              { label: 'Add Comment', value: 'comment' },
+              { label: 'Return to Main Menu', value: 'exit' }
+            ]);
+
+            if (postAction === 'exit') break;
+
+            if (postAction === 'view') {
+              execCommand(`gh pr view "${url}" --web`);
+            }
+
+            if (postAction === 'merge') {
+              const method = await selectOption('Merge Method:', [
+                { label: 'Merge Commit', value: '--merge' },
+                { label: 'Squash and Merge', value: '--squash' },
+                { label: 'Rebase and Merge', value: '--rebase' }
+              ]);
+              try {
+                execCommand(`gh pr merge "${url}" ${method} --delete-branch`);
+                log('✓ PR Merged!', 'green');
+                break;
+              } catch (e) {
+                log(`✗ Merge failed: ${e.message}`, 'red');
+              }
+            }
+
+            if (postAction === 'close') {
+              try {
+                execCommand(`gh pr close "${url}"`);
+                log('✓ PR Closed.', 'green');
+                break;
+              } catch (e) {
+                log(`✗ Close failed: ${e.message}`, 'red');
+              }
+            }
+
+            if (postAction === 'comment') {
+              const body = await askQuestion('Comment body: ');
+              if (body) {
+                execCommand(`gh pr comment "${url}" --body "${body}"`);
+                log('✓ Comment added.', 'green');
+              }
+            }
+          }
         } else {
           log('\n✗ Failed to create PR via gh CLI', 'red');
         }
@@ -1575,11 +1786,27 @@ async function commandIssue(options = {}) {
               .replace(/\s+/g, '-') // Replace spaces with dashes
               .substring(0, 50); // Limit length
 
-            const branchName = `feat/${issueNumber}-${sanitizedTitle}`;
+            let branchName = `feat/${issueNumber}-${sanitizedTitle}`;
+
+            const customBranchName = await askQuestion(`Branch name [${branchName}]: `);
+            if (customBranchName.trim()) {
+              branchName = customBranchName.trim();
+            }
 
             try {
               execCommand(`git checkout -b ${branchName}`);
               log(`✓ Switched to new branch: ${branchName}`, 'green');
+
+              const publish = await askQuestion('Do you want to publish this branch to remote? (y/n): ');
+              if (publish.toLowerCase() === 'y') {
+                log('→ Publishing branch...', 'cyan');
+                try {
+                  execCommand(`git push -u origin ${branchName}`);
+                  log('✓ Branch published to origin', 'green');
+                } catch (e) {
+                  log(`✗ Failed to publish branch: ${e.message}`, 'red');
+                }
+              }
             } catch (e) {
               log(`✗ Failed to create branch: ${e.message}`, 'red');
             }
@@ -1666,39 +1893,7 @@ async function commandIssue(options = {}) {
     }
 
     if (action === 'labels') {
-      const subAction = await selectOption('Label Options:', [
-        { label: 'AI Suggest', value: 'ai' },
-        { label: 'Select Existing', value: 'select' },
-        { label: 'Clear All', value: 'clear' },
-        { label: 'Back', value: 'back' }
-      ]);
-
-      if (subAction === 'ai') {
-        log('→ Analyzing...', 'yellow');
-        const existing = getExistingLabels();
-        const result = await callIssueApi({
-          action: 'labels',
-          title: currentTitle,
-          body: currentBody,
-          existingLabels: existing
-        });
-        currentLabels = result.labels;
-      } else if (subAction === 'select') {
-        const existing = getExistingLabels();
-        if (existing.length === 0) {
-          log('No existing labels found.', 'yellow');
-        } else {
-          log('Existing Labels:', 'cyan');
-          existing.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
-          const selection = await askQuestion('Enter numbers separated by comma (e.g. 1,3): ');
-          const indices = selection.split(',').map(s => parseInt(s.trim()) - 1);
-          const selected = indices.map(i => existing[i]).filter(l => l);
-          currentLabels = [...currentLabels, ...selected.map(name => ({ name }))];
-        }
-        await new Promise(r => setTimeout(r, 1000));
-      } else if (subAction === 'clear') {
-        currentLabels = [];
-      }
+      currentLabels = await manageLabelsInteractive(currentLabels);
     }
   }
 }
