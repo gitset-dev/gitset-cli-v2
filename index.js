@@ -125,36 +125,74 @@ function getGitsetKey() {
 }
 
 function getGitDiff(mode = 'unstaged') {
+  let diffOutput = '';
+
   if (mode === 'staged') {
-    return execCommand('git diff --cached');
+    diffOutput = execCommand('git diff --cached') || '';
   } else if (mode === 'all') {
     const staged = execCommand('git diff --cached') || '';
     const unstaged = execCommand('git diff') || '';
-    // The original code had `return execCommand(cmd) || '';` here, which was likely a typo.
-    // Assuming it meant to return the combined diff.
-    return [staged, unstaged].filter(Boolean).join('\n');
+    diffOutput = [staged, unstaged].filter(Boolean).join('\n');
+  } else {
+    diffOutput = execCommand('git diff') || '';
   }
-  return execCommand('git diff') || '';
+
+  // If mode is NOT staged, we should also look for untracked files
+  if (mode !== 'staged') {
+    const untrackedFiles = execCommand('git ls-files --others --exclude-standard');
+    if (untrackedFiles) {
+      const files = untrackedFiles.split('\n').filter(Boolean);
+      for (const file of files) {
+        try {
+          const content = fs.readFileSync(file, 'utf8');
+          // Simulate a git diff for a new file
+          diffOutput += `\ndiff --git a/${file} b/${file}\nnew file mode 100644\n--- /dev/null\n+++ b/${file}\n@@ -0,0 +1,${content.split('\n').length} @@\n${content.split('\n').map(line => '+' + line).join('\n')}\n`;
+        } catch (err) {
+          // Ignore read errors (e.g. directories or binary files)
+        }
+      }
+    }
+  }
+
+  return diffOutput;
 }
 
 function getChangedFiles(mode = 'unstaged') {
-  let output;
+  let output = '';
+
   if (mode === 'staged') {
+    output = execCommand('git diff --cached --name-status');
+  } else if (mode === 'all') {
+    const staged = execCommand('git diff --cached --name-status') || '';
+    const unstaged = execCommand('git diff --name-status') || '';
+    output = [staged, unstaged].filter(Boolean).join('\n');
+  } else {
+    output = execCommand('git diff --name-status');
+  }
+
+  // Include untracked files if not in staged mode
+  if (mode !== 'staged') {
+    const untracked = execCommand('git ls-files --others --exclude-standard');
+    if (untracked) {
+      // Format untracked files as "A\tfilename" (Added)
+      const formattedUntracked = untracked.split('\n').filter(Boolean).map(f => `A\t${f}`).join('\n');
+      output = output ? `${output}\n${formattedUntracked}` : formattedUntracked;
+    }
   }
 
   if (!output) return [];
 
   const fileMap = new Map();
 
-  output.split('\n').forEach(line => {
-    const [status, ...filePathParts] = line.split('\t');
-    const file = filePathParts.join('\t');
-    if (file) {
-      fileMap.set(file, { status, file });
+  output.split('\n').filter(Boolean).forEach(line => {
+    const [status, ...pathParts] = line.split(/\t/);
+    const filepath = pathParts.join('\t'); // Rejoin in case filename has tabs (rare but possible)
+    if (filepath) {
+      fileMap.set(filepath, status); // Use map to avoid duplicates if file is both staged and unstaged
     }
   });
 
-  return Array.from(fileMap.values());
+  return Array.from(fileMap.entries()).map(([file, status]) => ({ file, status }));
 }
 
 function getFileContent(filepath, revision = 'HEAD') {
@@ -995,19 +1033,6 @@ async function commandPR(options = {}) {
   try {
     // Get diff between target and current branch
     diff = execCommand(`git diff ${targetBranch}...${currentBranch}`);
-
-    // If no diff found via git diff, check if there are uncommitted changes
-    if (!diff) {
-      const uncommittedDiff = getGitDiff('unstaged');
-      if (uncommittedDiff) {
-        log('⚠️  No committed changes found, but you have uncommitted changes.', 'yellow');
-        const includeUncommitted = await askQuestion('Include uncommitted changes in analysis? (y/n): ');
-        if (includeUncommitted.toLowerCase() === 'y') {
-          diff = uncommittedDiff;
-        }
-      }
-    }
-
     if (!diff) {
       log('⚠️  No diff found or branches are identical.', 'yellow');
       const proceed = await askQuestion('Proceed anyway? (y/n): ');
