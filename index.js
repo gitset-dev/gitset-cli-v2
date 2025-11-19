@@ -125,30 +125,21 @@ function getGitsetKey() {
 }
 
 function getGitDiff(mode = 'unstaged') {
-  let cmd;
   if (mode === 'staged') {
-    cmd = 'git diff --cached';
+    return execCommand('git diff --cached');
   } else if (mode === 'all') {
     const staged = execCommand('git diff --cached') || '';
     const unstaged = execCommand('git diff') || '';
-    return staged + '\n' + unstaged;
-  } else {
-    cmd = 'git diff';
+    // The original code had `return execCommand(cmd) || '';` here, which was likely a typo.
+    // Assuming it meant to return the combined diff.
+    return [staged, unstaged].filter(Boolean).join('\n');
   }
-  return execCommand(cmd) || '';
+  return execCommand('git diff') || '';
 }
 
 function getChangedFiles(mode = 'unstaged') {
   let output;
-
   if (mode === 'staged') {
-    output = execCommand('git diff --cached --name-status');
-  } else if (mode === 'all') {
-    const staged = execCommand('git diff --cached --name-status') || '';
-    const unstaged = execCommand('git diff --name-status') || '';
-    output = [staged, unstaged].filter(Boolean).join('\n');
-  } else {
-    output = execCommand('git diff --name-status');
   }
 
   if (!output) return [];
@@ -1004,6 +995,19 @@ async function commandPR(options = {}) {
   try {
     // Get diff between target and current branch
     diff = execCommand(`git diff ${targetBranch}...${currentBranch}`);
+
+    // If no diff found via git diff, check if there are uncommitted changes
+    if (!diff) {
+      const uncommittedDiff = getGitDiff('unstaged');
+      if (uncommittedDiff) {
+        log('⚠️  No committed changes found, but you have uncommitted changes.', 'yellow');
+        const includeUncommitted = await askQuestion('Include uncommitted changes in analysis? (y/n): ');
+        if (includeUncommitted.toLowerCase() === 'y') {
+          diff = uncommittedDiff;
+        }
+      }
+    }
+
     if (!diff) {
       log('⚠️  No diff found or branches are identical.', 'yellow');
       const proceed = await askQuestion('Proceed anyway? (y/n): ');
