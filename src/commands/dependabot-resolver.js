@@ -175,7 +175,7 @@ async function commandDependabotResolver(config, args) {
             }
 
             // DEBUG: Log the first alert to understand structure
-            // console.log('DEBUG: First alert structure:', JSON.stringify(alerts[0], null, 2));
+            console.log('DEBUG: First alert structure:', JSON.stringify(alerts[0], null, 2));
 
             const analyzedAlerts = [];
 
