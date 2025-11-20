@@ -131,18 +131,42 @@ async function commandDependabotResolver(config, args) {
     if (subcommand === 'list' || subcommand === 'resolve') {
         log(`\n🔍 Fetching Dependabot alerts for ${owner}/${repo}...\n`, 'cyan');
 
-        let alerts = [];
         try {
+            let alerts = [];
+            let tokenError = null;
+
             if (token) {
-                // Prefer using the stored token directly
-                alerts = await fetchAlerts(owner, repo, token);
-            } else {
-                // Fallback to gh CLI if no token in config but gh is authenticated
-                const alertsJson = execCommand(`gh api "/repos/${owner}/${repo}/dependabot/alerts?state=open&per_page=100"`);
-                if (!alertsJson) {
-                    throw new Error('Failed to fetch alerts via gh CLI');
+                try {
+                    // Prefer using the stored token directly
+                    alerts = await fetchAlerts(owner, repo, token);
+                } catch (e) {
+                    tokenError = e;
+                    // Only fallback if it's an auth error
+                    if (e.message.includes('Unauthorized') || e.message.includes('Forbidden')) {
+                        log(`⚠️  Stored token failed (${e.message}).`, 'yellow');
+                        log('→ Falling back to local "gh" CLI...', 'cyan');
+                    } else {
+                        throw e; // Re-throw other errors (like 404)
+                    }
                 }
-                alerts = JSON.parse(alertsJson);
+            }
+
+            // Fallback to gh CLI if no token OR if token failed
+            if (!token || (tokenError && (tokenError.message.includes('Unauthorized') || tokenError.message.includes('Forbidden')))) {
+                try {
+                    const alertsJson = execCommand(`gh api "/repos/${owner}/${repo}/dependabot/alerts?state=open&per_page=100"`);
+                    if (!alertsJson) {
+                        throw new Error('Failed to fetch alerts via gh CLI (check "gh auth status" and scopes)');
+                    }
+                    alerts = JSON.parse(alertsJson);
+                } catch (ghError) {
+                    // If both failed, throw a combined error or the most relevant one
+                    if (tokenError) {
+                        throw new Error(`Both methods failed.\n  Token: ${tokenError.message}\n  CLI: ${ghError.message}\n  (Note: Dependabot alerts require 'security_events' scope)`);
+                    } else {
+                        throw ghError;
+                    }
+                }
             }
 
             if (!alerts || alerts.length === 0) {
