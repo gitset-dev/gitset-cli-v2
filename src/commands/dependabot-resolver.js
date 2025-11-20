@@ -123,11 +123,12 @@ async function commandDependabotResolver(config, args) {
                 const manifestPath = alert.dependency.manifest_path;
 
                 // Get patched version
-                const patchedVersion = alert.security_advisory.patched_versions[0]?.identifier;
-
-                if (!patchedVersion) {
+                // Get patched version
+                const advisory = alert.security_advisory;
+                if (!advisory || !advisory.patched_versions || advisory.patched_versions.length === 0) {
                     continue; // Skip if no fix available
                 }
+                const patchedVersion = advisory.patched_versions[0].identifier;
 
                 // Get local version
                 const localVersion = getLocalVersion(depName, manifestPath);
