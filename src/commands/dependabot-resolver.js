@@ -282,48 +282,23 @@ async function commandDependabotResolver(config, args) {
                     log('\n=== DRY RUN: Proposed Actions ===', 'magenta');
                     autoResolvable.forEach(alert => {
                         console.log(`\n[Alert #${alert.id}] ${alert.depName}`);
-                        console.log(`  Branch: dependabot/gitset/${alert.depName}-${alert.patchedVersion}`);
-                        console.log(`  PR Title: fix(deps): update ${alert.depName} to ${alert.patchedVersion}`);
-                        console.log(`  Action: Create branch, Update ${alert.manifestPath}, Create PR`);
+                        console.log(`  Update: ${alert.localVersion} -> ${alert.patchedVersion}`);
+                        console.log(`  Action: Update ${alert.manifestPath} locally`);
                     });
                     return;
                 }
 
-                const confirm = await askQuestion('Do you want to generate PRs for these alerts? (y/n): ');
+                const confirm = await askQuestion('Do you want to apply these updates locally? (y/n): ');
 
                 if (confirm.toLowerCase() === 'y') {
-                    log('\n🚀 Generating PRs...', 'cyan');
+                    log('\n🚀 Applying updates...', 'cyan');
 
                     for (const alert of autoResolvable) {
-                        const branchName = `dependabot/gitset/${alert.depName}-${alert.patchedVersion}`;
-                        const title = `fix(deps): update ${alert.depName} to ${alert.patchedVersion}`;
-                        const body = `Resolves Dependabot alert #${alert.id}\n\nUpdate ${alert.depName} from ${alert.localVersion} to ${alert.patchedVersion}.\n\nRisk: ${alert.risk.level}\nReason: ${alert.risk.reason}`;
+                        log(`\n[${alert.depName}] Updating to ${alert.patchedVersion}...`, 'blue');
 
                         try {
-                            // 1. Create Branch
-                            let defaultBranch = 'main';
-                            try {
-                                const remoteHead = execCommand('git symbolic-ref refs/remotes/origin/HEAD');
-                                if (remoteHead) {
-                                    defaultBranch = remoteHead.split('/').pop().trim();
-                                } else {
-                                    // Fallback: try to get current branch or assume main/master
-                                    const current = execCommand('git branch --show-current');
-                                    defaultBranch = current || 'main';
-                                }
-                            } catch (e) {
-                                log(`  ⚠️  Could not detect default branch, assuming '${defaultBranch}'`, 'yellow');
-                            }
-
-                            execCommand(`git checkout ${defaultBranch}`);
-                            execCommand(`git pull`);
-                            execCommand(`git checkout -b ${branchName}`);
-                            log(`  ✓ Created branch ${branchName}`, 'green');
-
-                            // 2. Update Dependency
+                            // 1. Update Dependency
                             if (alert.ecosystem === 'npm') {
-                                log(`  → Running npm install ${alert.depName}@${alert.patchedVersion}...`, 'cyan');
-
                                 // Check if it's a dev dependency
                                 const pkgPath = path.resolve(process.cwd(), 'package.json');
                                 let saveDev = false;
@@ -336,27 +311,7 @@ async function commandDependabotResolver(config, args) {
 
                                 try {
                                     execCommand(`npm install ${alert.depName}@${alert.patchedVersion} ${saveDev ? '--save-dev' : ''}`);
-                                    execCommand('git add package.json package-lock.json');
-
-                                    // Commit and Push
-                                    execCommand(`git commit -m "${title}"`);
-                                    execCommand(`git push -u origin ${branchName}`);
-                                    log(`  ✓ Updated ${alert.depName} and pushed`, 'green');
-
-                                    // 3. Create PR
-                                    if (token) process.env.GH_TOKEN = token;
-
-                                    const prCmd = `gh pr create --title "${title}" --body "${body}" --base ${defaultBranch} --head ${branchName}`;
-
-                                    try {
-                                        const prUrl = execSync(prCmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
-                                        log(`  ✨ PR Created: ${prUrl}`, 'green');
-                                    } catch (e) {
-                                        log(`  ✗ Failed to create PR`, 'red');
-                                        log(`    Error: ${e.message}`, 'yellow');
-                                        if (e.stderr) log(`    Details: ${e.stderr.toString()}`, 'yellow');
-                                    }
-
+                                    log(`  ✓ Updated ${alert.depName}`, 'green');
                                 } catch (err) {
                                     log(`  ✗ npm install failed: ${err.message}`, 'red');
                                     throw err;
@@ -374,19 +329,7 @@ async function commandDependabotResolver(config, args) {
 
                                     if (newContent !== content) {
                                         fs.writeFileSync(fullPath, newContent);
-                                        execCommand(`git add ${alert.manifestPath}`);
-                                        execCommand(`git commit -m "${title}"`);
-                                        execCommand(`git push -u origin ${branchName}`);
-                                        log(`  ✓ Updated ${alert.manifestPath} and pushed`, 'green');
-
-                                        // 3. Create PR
-                                        if (token) process.env.GH_TOKEN = token;
-                                        const prUrl = execCommand(`gh pr create --title "${title}" --body "${body}" --base ${defaultBranch} --head ${branchName}`);
-                                        if (prUrl) {
-                                            log(`  ✨ PR Created: ${prUrl}`, 'green');
-                                        } else {
-                                            log(`  ✗ Failed to create PR`, 'red');
-                                        }
+                                        log(`  ✓ Updated ${alert.manifestPath}`, 'green');
                                     } else {
                                         log(`  ⚠️  Could not replace version in ${alert.manifestPath}`, 'yellow');
                                     }
@@ -395,14 +338,13 @@ async function commandDependabotResolver(config, args) {
                                 }
                             }
 
-                            // Cleanup: switch back
-                            execCommand(`git checkout ${defaultBranch}`);
-
                         } catch (e) {
                             log(`  ✗ Failed to resolve ${alert.depName}: ${e.message}`, 'red');
-                            execCommand(`git checkout -`); // Try to go back
                         }
                     }
+
+                    log('\n✨ Updates completed!', 'green');
+                    log('👉 Run "gitset commit" to review and commit these changes.', 'magenta');
                 }
             }
 
