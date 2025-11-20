@@ -301,7 +301,20 @@ async function commandDependabotResolver(config, args) {
 
                         try {
                             // 1. Create Branch
-                            const defaultBranch = execCommand('git symbolic-ref refs/remotes/origin/HEAD').split('/').pop().trim();
+                            let defaultBranch = 'main';
+                            try {
+                                const remoteHead = execCommand('git symbolic-ref refs/remotes/origin/HEAD');
+                                if (remoteHead) {
+                                    defaultBranch = remoteHead.split('/').pop().trim();
+                                } else {
+                                    // Fallback: try to get current branch or assume main/master
+                                    const current = execCommand('git branch --show-current');
+                                    defaultBranch = current || 'main';
+                                }
+                            } catch (e) {
+                                log(`  ⚠️  Could not detect default branch, assuming '${defaultBranch}'`, 'yellow');
+                            }
+
                             execCommand(`git checkout ${defaultBranch}`);
                             execCommand(`git pull`);
                             execCommand(`git checkout -b ${branchName}`);
