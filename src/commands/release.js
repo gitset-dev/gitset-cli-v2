@@ -2,6 +2,7 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
+const os = require('os');
 
 const BACKEND_URL = 'https://gitset-core-v2.vercel.app/api/release';
 
@@ -30,9 +31,6 @@ function getGitConfig() {
     const remoteUrl = execCommand('git config --get remote.origin.url');
     if (!remoteUrl) return null;
 
-    // Parse owner/repo from URL (supports https and ssh)
-    // https://github.com/owner/repo.git
-    // git@github.com:owner/repo.git
     const match = remoteUrl.match(/[:/]([^/]+)\/([^/.]+)(?:\.git)?$/);
     if (!match) return null;
 
@@ -44,7 +42,6 @@ function getGitConfig() {
 
 function getCommitsSince(tag) {
     const range = tag ? `${tag}..HEAD` : 'HEAD';
-    // Format: hash|author|message
     const output = execCommand(`git log ${range} --pretty=format:"%h|%an|%s"`);
     if (!output) return [];
 
@@ -65,8 +62,24 @@ async function askQuestion(query) {
     });
     return new Promise(resolve => rl.question(query, ans => {
         rl.close();
-        resolve(ans);
+        resolve(ans.trim());
     }));
+}
+
+async function selectOption(title, options) {
+    log(`\n${title}`, 'blue');
+    options.forEach((opt, i) => {
+        log(`${i + 1}. ${opt.label}`, 'cyan');
+    });
+
+    while (true) {
+        const answer = await askQuestion('\nSelect an option (number): ');
+        const index = parseInt(answer) - 1;
+        if (index >= 0 && index < options.length) {
+            return options[index].value;
+        }
+        log('Invalid selection', 'red');
+    }
 }
 
 async function generateReleaseNotes(commits, options, config) {
@@ -107,6 +120,22 @@ async function commandRelease(config) {
         return;
     }
 
+    // Check if gh is installed
+    const ghVersion = execCommand('gh --version');
+    if (!ghVersion) {
+        log('✗ GitHub CLI (gh) is not installed or not in PATH.', 'red');
+        log('  Please install it to use the release manager: https://cli.github.com/', 'yellow');
+        return;
+    }
+
+    // Check if gh is authenticated
+    const user = execCommand('gh api user');
+    if (!user) {
+        log('✗ GitHub CLI not authenticated.', 'red');
+        log('  Run: gh auth login', 'yellow');
+        return;
+    }
+
     log(`\n🚀 Release Manager for ${repoInfo.owner}/${repoInfo.repo}\n`, 'blue');
 
     const lastTag = getLastTag();
@@ -123,14 +152,13 @@ async function commandRelease(config) {
 
     // 2. Commit Analysis
     log('\n📊 Analyzing commits...', 'cyan');
-    const commits = getCommitsSince(lastTag);
+    let commits = getCommitsSince(lastTag);
     log(`Found ${commits.length} commits since ${lastTag || 'start'}.`, 'green');
 
     // Smart Analysis: Fetch diffs if few commits
     if (commits.length <= 2) {
         process.stdout.write('  ↳ Fetching detailed diffs for smart analysis... ');
         commits = commits.map(c => {
-            // Check file count first to avoid huge diffs
             const fileCountStr = execCommand(`git show --pretty="" --name-only ${c.hash} | wc -l`);
             const fileCount = parseInt(fileCountStr || '0');
 
@@ -164,14 +192,19 @@ async function commandRelease(config) {
         console.log(currentNotes);
         log('='.repeat(50));
 
-        const action = await askQuestion('\n[P]ublish  [R]efine  [E]dit Manually  [C]ancel: ');
+        const action = await selectOption('What would you like to do?', [
+            { label: 'Publish Release', value: 'publish' },
+            { label: 'Refine with AI', value: 'refine' },
+            { label: 'Edit Manually', value: 'edit' },
+            { label: 'Cancel', value: 'cancel' }
+        ]);
 
-        if (action.toLowerCase() === 'c') {
+        if (action === 'cancel') {
             log('Cancelled.', 'yellow');
             return;
         }
 
-        if (action.toLowerCase() === 'r') {
+        if (action === 'refine') {
             const instruction = await askQuestion('Refinement instruction: ');
             log('Refining...', 'magenta');
             const refined = await generateReleaseNotes(commits, {
@@ -186,11 +219,20 @@ async function commandRelease(config) {
                 currentNotes = refined.release_notes;
                 version = refined.version_number;
             }
-        } else if (action.toLowerCase() === 'e') {
-            // Simple manual edit simulation (in real CLI would open editor)
-            log('Manual editing not fully implemented in this demo environment.', 'yellow');
-            await new Promise(r => setTimeout(r, 1000));
-        } else if (action.toLowerCase() === 'p') {
+        } else if (action === 'edit') {
+            const tmpFile = path.join(os.tmpdir(), `gitset-release-${Date.now()}.md`);
+            fs.writeFileSync(tmpFile, currentNotes);
+            const editor = process.env.EDITOR || 'vi';
+            try {
+                const { spawnSync } = require('child_process');
+                spawnSync(editor, [tmpFile], { stdio: 'inherit' });
+                currentNotes = fs.readFileSync(tmpFile, 'utf8');
+                log('✓ Notes updated', 'green');
+            } catch (e) {
+                log('✗ Failed to open editor', 'red');
+            }
+            if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+        } else if (action === 'publish') {
             break;
         }
     }
@@ -200,48 +242,44 @@ async function commandRelease(config) {
 
     // Create Tag
     try {
-        execCommand(`git tag -a ${tagName} -m "${tagMsg || tagName}"`);
-        log(`✓ Created local tag ${tagName}`, 'green');
-
-        execCommand(`git push origin ${tagName}`);
-        log(`✓ Pushed tag to origin`, 'green');
-    } catch (e) {
-        log(`✗ Error creating/pushing tag: ${e.message}`, 'red');
-        return;
-    }
-
-    // Create Release on GitHub
-    // Note: This requires GitHub Token. We'll use the one from config if available.
-    if (!config.github_token) {
-        log('⚠️  GitHub token not found in config. Cannot create GitHub Release automatically.', 'yellow');
-        log('   You can manually create the release on GitHub with the generated notes.', 'yellow');
-        return;
-    }
-
-    try {
-        const response = await fetch(`https://api.github.com/repos/${repoInfo.owner}/${repoInfo.repo}/releases`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `token ${config.github_token}`,
-                'Accept': 'application/vnd.github.v3+json'
-            },
-            body: JSON.stringify({
-                tag_name: tagName,
-                name: tagName,
-                body: currentNotes,
-                draft: false,
-                prerelease: false
-            })
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            log(`\n✨ Release published successfully!`, 'green');
-            log(`🔗 ${data.html_url}`, 'blue');
+        const tagExists = execCommand(`git tag -l ${tagName}`);
+        if (!tagExists) {
+            execCommand(`git tag -a ${tagName} -m "${tagMsg || tagName}"`);
+            log(`✓ Created local tag ${tagName}`, 'green');
         } else {
-            const err = await response.json();
-            log(`✗ GitHub API Error: ${err.message}`, 'red');
+            log(`ℹ Tag ${tagName} already exists locally`, 'yellow');
         }
+
+        try {
+            execCommand(`git push origin ${tagName}`);
+            log(`✓ Pushed tag to origin`, 'green');
+        } catch (e) {
+            log(`⚠️  Failed to push tag (might already exist on remote): ${e.message}`, 'yellow');
+        }
+    } catch (e) {
+        log(`✗ Error creating tag: ${e.message}`, 'red');
+        return;
+    }
+
+    // Create Release on GitHub using gh CLI
+    try {
+        const tmpFile = path.join(os.tmpdir(), `gitset-release-notes-${Date.now()}.md`);
+        fs.writeFileSync(tmpFile, currentNotes);
+
+        log('→ Creating GitHub Release...', 'cyan');
+
+        const cmd = `gh release create "${tagName}" -F "${tmpFile}" -t "${tagName}"`;
+        const url = execCommand(cmd);
+
+        if (url) {
+            log(`\n✨ Release published successfully!`, 'green');
+            log(`🔗 ${url}`, 'blue');
+        } else {
+            log(`✗ Failed to create release via gh CLI`, 'red');
+        }
+
+        if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+
     } catch (e) {
         log(`✗ Error publishing release: ${e.message}`, 'red');
     }
