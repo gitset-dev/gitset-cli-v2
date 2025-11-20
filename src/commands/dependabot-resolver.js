@@ -174,6 +174,9 @@ async function commandDependabotResolver(config, args) {
                 return;
             }
 
+            // DEBUG: Log the first alert to understand structure
+            // console.log('DEBUG: First alert structure:', JSON.stringify(alerts[0], null, 2));
+
             const analyzedAlerts = [];
 
             for (const alert of alerts) {
@@ -183,10 +186,20 @@ async function commandDependabotResolver(config, args) {
 
                 // Get patched version
                 const advisory = alert.security_advisory;
-                if (!advisory || !advisory.patched_versions || advisory.patched_versions.length === 0) {
-                    continue; // Skip if no fix available
+
+                // DEBUG: Check why it might be skipping
+                if (!advisory) {
+                    // log(`Skipping ${depName}: No security_advisory`, 'yellow');
+                    continue;
                 }
-                const patchedVersion = advisory.patched_versions[0].identifier;
+                if (!advisory.patched_versions || advisory.patched_versions.length === 0) {
+                    // log(`Skipping ${depName}: No patched_versions`, 'yellow');
+                    // continue; // TEMPORARILY COMMENTED OUT TO SHOW ALL ALERTS
+                }
+
+                const patchedVersion = (advisory.patched_versions && advisory.patched_versions.length > 0)
+                    ? advisory.patched_versions[0].identifier
+                    : 'N/A';
 
                 // Get local version
                 const localVersion = getLocalVersion(depName, manifestPath);
