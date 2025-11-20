@@ -827,6 +827,7 @@ function showHelp() {
   log('  gitset pr                 Create Pull Request with AI', 'green');
   log('  gitset release            Manage Tags & Releases', 'green');
   log('  gitset readme             Generate/Update README', 'green');
+  log('  gitset dependabot-resolver Analyze and resolve Dependabot alerts', 'green');
 
   log('\nTEMPLATE MANAGEMENT:', 'magenta');
   log('  gitset template --sync    Create/update commit message template', 'green');
