@@ -2166,6 +2166,13 @@ async function main() {
       break;
     }
 
+    case 'dependabot-resolver': {
+      const commandDependabotResolver = require('./src/commands/dependabot-resolver');
+      const config = loadConfig();
+      await commandDependabotResolver(config, args.slice(1));
+      break;
+    }
+
     case 'template':
       commandTemplate(args[1]);
       break;
