@@ -347,12 +347,14 @@ async function commandDependabotResolver(config, args) {
                                     if (token) process.env.GH_TOKEN = token;
 
                                     const prCmd = `gh pr create --title "${title}" --body "${body}" --base ${defaultBranch} --head ${branchName}`;
-                                    const prUrl = execCommand(prCmd);
 
-                                    if (prUrl) {
+                                    try {
+                                        const prUrl = execSync(prCmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
                                         log(`  ✨ PR Created: ${prUrl}`, 'green');
-                                    } else {
+                                    } catch (e) {
                                         log(`  ✗ Failed to create PR`, 'red');
+                                        log(`    Error: ${e.message}`, 'yellow');
+                                        if (e.stderr) log(`    Details: ${e.stderr.toString()}`, 'yellow');
                                     }
 
                                 } catch (err) {
