@@ -51,6 +51,24 @@ function getLocalVersion(dependencyName, manifestPath) {
             const version = deps[dependencyName];
             return version ? version.replace(/^[\^~]/, '') : null;
         }
+
+        if (manifestPath.endsWith('package-lock.json')) {
+            const lock = JSON.parse(content);
+            // Try lockfile v2/v3 'packages'
+            if (lock.packages) {
+                const pkgKey = `node_modules/${dependencyName}`;
+                if (lock.packages[pkgKey]) {
+                    return lock.packages[pkgKey].version;
+                }
+                // Try root dependencies if not in packages (rare for v2+)
+            }
+            // Try lockfile v1 'dependencies'
+            if (lock.dependencies && lock.dependencies[dependencyName]) {
+                return lock.dependencies[dependencyName].version;
+            }
+            return null;
+        }
+
         // Add other parsers (requirements.txt, etc.) as needed
         // For now, simple regex for requirements.txt
         if (manifestPath.endsWith('requirements.txt')) {
@@ -61,6 +79,7 @@ function getLocalVersion(dependencyName, manifestPath) {
 
         return null;
     } catch (e) {
+        // console.log('Error reading manifest:', e.message);
         return null;
     }
 }
