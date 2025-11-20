@@ -65,34 +65,64 @@ function getLocalVersion(dependencyName, manifestPath) {
     }
 }
 
+async function fetchAlerts(owner, repo, token) {
+    const url = `https://api.github.com/repos/${owner}/${repo}/dependabot/alerts?state=open&per_page=100`;
+    try {
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28'
+            }
+        });
+
+        if (!response.ok) {
+            if (response.status === 401) throw new Error('Unauthorized (check token scopes)');
+            if (response.status === 403) throw new Error('Forbidden (check permissions/dependabot access)');
+            if (response.status === 404) throw new Error('Repo not found or no access');
+            throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        }
+
+        return await response.json();
+    } catch (e) {
+        throw e;
+    }
+}
+
 async function commandDependabotResolver(config, args) {
-    // Check gh authentication
+    // 1. Authentication Check
+    const token = config?.github_token;
     const ghStatus = execCommand('gh auth status');
-    if (!ghStatus && !config.github_token) {
-        log('✗ GitHub CLI (gh) not authenticated and no token in config.', 'red');
-        log('  Run "gh auth login" or "gitset auth".', 'yellow');
+
+    if (!token && !ghStatus) {
+        log('✗ No GitHub authentication found.', 'red');
+        log('  Please run "gitset auth" (recommended) or "gh auth login".', 'yellow');
         return;
     }
 
     const analyzer = new DependabotAnalyzer();
 
-    // Get repo info from git config
-    // We can reuse the getGitConfig from release.js if we export it, or duplicate for now to keep independent
+    // 2. Repository Detection
     let owner, repo;
     try {
         const remoteUrl = execCommand('git config --get remote.origin.url');
+        if (!remoteUrl) throw new Error('No remote origin found');
+
+        // Handle SSH and HTTPS URLs
+        // git@github.com:owner/repo.git
+        // https://github.com/owner/repo.git
         const match = remoteUrl.match(/[:/]([^/]+)\/([^/.]+)(?:\.git)?$/);
         if (match) {
             owner = match[1];
             repo = match[2];
         }
     } catch (e) {
-        log('✗ Could not detect repository info', 'red');
+        log('✗ Could not detect repository info from git config', 'red');
         return;
     }
 
     if (!owner || !repo) {
-        log('✗ Invalid repository info', 'red');
+        log('✗ Invalid repository info detected', 'red');
         return;
     }
 
@@ -101,14 +131,19 @@ async function commandDependabotResolver(config, args) {
     if (subcommand === 'list' || subcommand === 'resolve') {
         log(`\n🔍 Fetching Dependabot alerts for ${owner}/${repo}...\n`, 'cyan');
 
+        let alerts = [];
         try {
-            const alertsJson = execCommand(`gh api "/repos/${owner}/${repo}/dependabot/alerts?state=open&per_page=100"`);
-            if (!alertsJson) {
-                log('✗ Failed to fetch alerts (check permissions/auth)', 'red');
-                return;
+            if (token) {
+                // Prefer using the stored token directly
+                alerts = await fetchAlerts(owner, repo, token);
+            } else {
+                // Fallback to gh CLI if no token in config but gh is authenticated
+                const alertsJson = execCommand(`gh api "/repos/${owner}/${repo}/dependabot/alerts?state=open&per_page=100"`);
+                if (!alertsJson) {
+                    throw new Error('Failed to fetch alerts via gh CLI');
+                }
+                alerts = JSON.parse(alertsJson);
             }
-
-            const alerts = JSON.parse(alertsJson);
 
             if (!alerts || alerts.length === 0) {
                 log('✓ No open Dependabot alerts found!', 'green');
@@ -122,7 +157,6 @@ async function commandDependabotResolver(config, args) {
                 const ecosystem = alert.dependency.package.ecosystem;
                 const manifestPath = alert.dependency.manifest_path;
 
-                // Get patched version
                 // Get patched version
                 const advisory = alert.security_advisory;
                 if (!advisory || !advisory.patched_versions || advisory.patched_versions.length === 0) {
@@ -231,7 +265,27 @@ async function commandDependabotResolver(config, args) {
                                     log(`  ✓ Updated ${alert.manifestPath} and pushed`, 'green');
 
                                     // 3. Create PR
-                                    const prUrl = execCommand(`gh pr create --title "${title}" --body "${body}" --base ${defaultBranch} --head ${branchName}`);
+                                    // Use the token for PR creation if available to avoid gh auth issues
+                                    let prCmd = `gh pr create --title "${title}" --body "${body}" --base ${defaultBranch} --head ${branchName}`;
+
+                                    // If we have a token, we can try to pass it to gh via env, 
+                                    // but execCommand doesn't support env passing easily in my helper.
+                                    // However, if fetch worked, we know the token is valid.
+                                    // We can try to use fetch to create PR too? 
+                                    // Or just rely on gh. 
+                                    // Since the user specifically mentioned credentials, let's try to make gh use the token if possible.
+                                    // But modifying execCommand is risky if I don't want to break other things.
+                                    // Let's just run it. If gh is not auth'd, it will fail.
+                                    // But wait, if I used fetch for alerts, I should probably use fetch for PRs too to be consistent.
+                                    // But PR creation is complex (forks etc).
+                                    // Let's stick to gh for PR creation for now, assuming if they want to create PRs they might have gh setup,
+                                    // OR I can try to set GH_TOKEN in the process.env for this script execution?
+
+                                    if (token) {
+                                        process.env.GH_TOKEN = token;
+                                    }
+
+                                    const prUrl = execCommand(prCmd);
                                     if (prUrl) {
                                         log(`  ✨ PR Created: ${prUrl}`, 'green');
                                     } else {
@@ -257,6 +311,9 @@ async function commandDependabotResolver(config, args) {
 
         } catch (e) {
             log(`✗ Error: ${e.message}`, 'red');
+            if (e.message.includes('404')) {
+                log('  (Make sure Dependabot alerts are enabled for this repo)', 'yellow');
+            }
         }
     } else {
         log('Usage: gitset dependabot-resolver [list|resolve]', 'yellow');
