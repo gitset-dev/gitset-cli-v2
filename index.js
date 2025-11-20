@@ -827,7 +827,7 @@ function showHelp() {
   log('  gitset pr                 Create Pull Request with AI', 'green');
   log('  gitset release            Manage Tags & Releases', 'green');
   log('  gitset readme             Generate/Update README', 'green');
-  log('  gitset dependabot-resolver Analyze and resolve Dependabot alerts', 'green');
+  log('  gitset dependabot         Analyze and resolve Dependabot alerts', 'green');
 
   log('\nTEMPLATE MANAGEMENT:', 'magenta');
   log('  gitset template --sync    Create/update commit message template', 'green');
@@ -2167,7 +2167,7 @@ async function main() {
       break;
     }
 
-    case 'dependabot-resolver': {
+    case 'dependabot': {
       const commandDependabotResolver = require('./src/commands/dependabot-resolver');
       const config = loadConfig();
       await commandDependabotResolver(config, args.slice(1));

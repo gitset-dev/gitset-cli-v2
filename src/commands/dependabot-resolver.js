@@ -145,7 +145,8 @@ async function commandDependabotResolver(config, args) {
         return;
     }
 
-    const subcommand = args[0] || 'list';
+    const shouldResolve = args.includes('--resolve');
+    const subcommand = shouldResolve ? 'resolve' : 'list';
 
     if (subcommand === 'list' || subcommand === 'resolve') {
         log(`\n🔍 Fetching Dependabot alerts for ${owner}/${repo}...\n`, 'cyan');
@@ -306,57 +307,77 @@ async function commandDependabotResolver(config, args) {
                             execCommand(`git checkout -b ${branchName}`);
                             log(`  ✓ Created branch ${branchName}`, 'green');
 
-                            // 2. Update File
-                            const fullPath = path.resolve(process.cwd(), alert.manifestPath);
-                            if (fs.existsSync(fullPath)) {
-                                let content = fs.readFileSync(fullPath, 'utf8');
-                                let newContent = content;
+                            // 2. Update Dependency
+                            if (alert.ecosystem === 'npm') {
+                                log(`  → Running npm install ${alert.depName}@${alert.patchedVersion}...`, 'cyan');
 
-                                if (alert.ecosystem === 'npm') {
-                                    newContent = content.replace(new RegExp(`"${alert.depName}":\\s*"[^"]+"`), `"${alert.depName}": "${alert.patchedVersion}"`);
-                                } else if (alert.ecosystem === 'pip') {
-                                    newContent = content.replace(new RegExp(`^${alert.depName}==.*$`, 'm'), `${alert.depName}==${alert.patchedVersion}`);
+                                // Check if it's a dev dependency
+                                const pkgPath = path.resolve(process.cwd(), 'package.json');
+                                let saveDev = false;
+                                if (fs.existsSync(pkgPath)) {
+                                    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+                                    if (pkg.devDependencies && pkg.devDependencies[alert.depName]) {
+                                        saveDev = true;
+                                    }
                                 }
 
-                                if (newContent !== content) {
-                                    fs.writeFileSync(fullPath, newContent);
-                                    execCommand(`git add ${alert.manifestPath}`);
+                                try {
+                                    execCommand(`npm install ${alert.depName}@${alert.patchedVersion} ${saveDev ? '--save-dev' : ''}`);
+                                    execCommand('git add package.json package-lock.json');
+
+                                    // Commit and Push
                                     execCommand(`git commit -m "${title}"`);
                                     execCommand(`git push -u origin ${branchName}`);
-                                    log(`  ✓ Updated ${alert.manifestPath} and pushed`, 'green');
+                                    log(`  ✓ Updated ${alert.depName} and pushed`, 'green');
 
                                     // 3. Create PR
-                                    // Use the token for PR creation if available to avoid gh auth issues
-                                    let prCmd = `gh pr create --title "${title}" --body "${body}" --base ${defaultBranch} --head ${branchName}`;
+                                    if (token) process.env.GH_TOKEN = token;
 
-                                    // If we have a token, we can try to pass it to gh via env, 
-                                    // but execCommand doesn't support env passing easily in my helper.
-                                    // However, if fetch worked, we know the token is valid.
-                                    // We can try to use fetch to create PR too? 
-                                    // Or just rely on gh. 
-                                    // Since the user specifically mentioned credentials, let's try to make gh use the token if possible.
-                                    // But modifying execCommand is risky if I don't want to break other things.
-                                    // Let's just run it. If gh is not auth'd, it will fail.
-                                    // But wait, if I used fetch for alerts, I should probably use fetch for PRs too to be consistent.
-                                    // But PR creation is complex (forks etc).
-                                    // Let's stick to gh for PR creation for now, assuming if they want to create PRs they might have gh setup,
-                                    // OR I can try to set GH_TOKEN in the process.env for this script execution?
-
-                                    if (token) {
-                                        process.env.GH_TOKEN = token;
-                                    }
-
+                                    const prCmd = `gh pr create --title "${title}" --body "${body}" --base ${defaultBranch} --head ${branchName}`;
                                     const prUrl = execCommand(prCmd);
+
                                     if (prUrl) {
                                         log(`  ✨ PR Created: ${prUrl}`, 'green');
                                     } else {
                                         log(`  ✗ Failed to create PR`, 'red');
                                     }
-                                } else {
-                                    log(`  ⚠️  Could not replace version in ${alert.manifestPath}`, 'yellow');
+
+                                } catch (err) {
+                                    log(`  ✗ npm install failed: ${err.message}`, 'red');
+                                    throw err;
                                 }
                             } else {
-                                log(`  ✗ File not found: ${alert.manifestPath}`, 'red');
+                                // Fallback for other ecosystems (pip, etc) - Manual File Edit
+                                const fullPath = path.resolve(process.cwd(), alert.manifestPath);
+                                if (fs.existsSync(fullPath)) {
+                                    let content = fs.readFileSync(fullPath, 'utf8');
+                                    let newContent = content;
+
+                                    if (alert.ecosystem === 'pip') {
+                                        newContent = content.replace(new RegExp(`^${alert.depName}==.*$`, 'm'), `${alert.depName}==${alert.patchedVersion}`);
+                                    }
+
+                                    if (newContent !== content) {
+                                        fs.writeFileSync(fullPath, newContent);
+                                        execCommand(`git add ${alert.manifestPath}`);
+                                        execCommand(`git commit -m "${title}"`);
+                                        execCommand(`git push -u origin ${branchName}`);
+                                        log(`  ✓ Updated ${alert.manifestPath} and pushed`, 'green');
+
+                                        // 3. Create PR
+                                        if (token) process.env.GH_TOKEN = token;
+                                        const prUrl = execCommand(`gh pr create --title "${title}" --body "${body}" --base ${defaultBranch} --head ${branchName}`);
+                                        if (prUrl) {
+                                            log(`  ✨ PR Created: ${prUrl}`, 'green');
+                                        } else {
+                                            log(`  ✗ Failed to create PR`, 'red');
+                                        }
+                                    } else {
+                                        log(`  ⚠️  Could not replace version in ${alert.manifestPath}`, 'yellow');
+                                    }
+                                } else {
+                                    log(`  ✗ File not found: ${alert.manifestPath}`, 'red');
+                                }
                             }
 
                             // Cleanup: switch back
@@ -377,7 +398,7 @@ async function commandDependabotResolver(config, args) {
             }
         }
     } else {
-        log('Usage: gitset dependabot-resolver [list|resolve]', 'yellow');
+        log('Usage: gitset dependabot [--resolve]', 'yellow');
     }
 }
 
