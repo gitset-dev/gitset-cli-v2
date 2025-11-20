@@ -193,9 +193,6 @@ async function commandDependabotResolver(config, args) {
                 return;
             }
 
-            // DEBUG: Log the first alert to understand structure
-            console.log('DEBUG: First alert structure:', JSON.stringify(alerts[0], null, 2));
-
             const analyzedAlerts = [];
 
             for (const alert of alerts) {
@@ -204,21 +201,29 @@ async function commandDependabotResolver(config, args) {
                 const manifestPath = alert.dependency.manifest_path;
 
                 // Get patched version
-                const advisory = alert.security_advisory;
+                // Structure can vary. Try multiple paths.
+                let patchedVersion = null;
 
-                // DEBUG: Check why it might be skipping
-                if (!advisory) {
-                    // log(`Skipping ${depName}: No security_advisory`, 'yellow');
+                // Path 1: security_vulnerability (direct on alert)
+                if (alert.security_vulnerability && alert.security_vulnerability.first_patched_version) {
+                    patchedVersion = alert.security_vulnerability.first_patched_version.identifier;
+                }
+                // Path 2: security_advisory.vulnerabilities (array)
+                else if (alert.security_advisory && alert.security_advisory.vulnerabilities) {
+                    const v = alert.security_advisory.vulnerabilities.find(v => v.package.name === depName);
+                    if (v && v.first_patched_version) {
+                        patchedVersion = v.first_patched_version.identifier;
+                    }
+                }
+                // Path 3: security_advisory.patched_versions (legacy/other)
+                else if (alert.security_advisory && alert.security_advisory.patched_versions && alert.security_advisory.patched_versions.length > 0) {
+                    patchedVersion = alert.security_advisory.patched_versions[0].identifier;
+                }
+
+                if (!patchedVersion) {
+                    // If no patched version, we can't resolve it automatically
                     continue;
                 }
-                if (!advisory.patched_versions || advisory.patched_versions.length === 0) {
-                    // log(`Skipping ${depName}: No patched_versions`, 'yellow');
-                    // continue; // TEMPORARILY COMMENTED OUT TO SHOW ALL ALERTS
-                }
-
-                const patchedVersion = (advisory.patched_versions && advisory.patched_versions.length > 0)
-                    ? advisory.patched_versions[0].identifier
-                    : 'N/A';
 
                 // Get local version
                 const localVersion = getLocalVersion(depName, manifestPath);
