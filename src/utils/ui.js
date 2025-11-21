@@ -28,7 +28,7 @@ function askQuestion(query) {
 }
 
 async function selectOption(title, options) {
-    log(`\n${title}`, 'blue');
+    log(`\n${title}`, 'reset');
     options.forEach((opt, i) => {
         log(`${i + 1}. ${opt.label}`, 'cyan');
     });

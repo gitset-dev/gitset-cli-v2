@@ -345,7 +345,7 @@ async function commandCommit(options = {}) {
     modeLabel = 'all changes';
   }
 
-  log(`\n📊 Analyzing ${modeLabel} changes...\n`, 'cyan');
+  log(`\n→ Analyzing ${modeLabel} changes...\n`, 'cyan');
 
   const changesData = prepareChangesData(mode);
   if (!changesData) {
@@ -698,7 +698,7 @@ async function commandVerify() {
       log('✓ Connection successful', 'green');
       log(`✓ User verified`, 'green');
       if (data.quota_info) {
-        log(`\n📊 Account information:`, 'cyan');
+        log(`\n● Account information:`, 'cyan');
         log(`   Plan: ${data.quota_info.plan}`, 'yellow');
         log(`   Messages used: ${data.quota_info.used}`, 'yellow');
         log(`   Messages remaining: ${data.quota_info.remaining}`, 'yellow');
@@ -791,7 +791,7 @@ function commandTemplate(action) {
 }
 
 function showHelp() {
-  log('\n🚀 Gitset CLI v2.1', 'blue');
+  log('\n● Gitset CLI v2.1', 'blue');
   log('\nAvailable commands:\n', 'cyan');
 
   log('AUTHENTICATION:', 'pink');
