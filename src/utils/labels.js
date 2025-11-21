@@ -22,7 +22,7 @@ async function manageLabelsInteractive(currentLabels) {
     while (true) {
         console.clear();
         log('=== Label Management ===', 'blue');
-        log(`Selected Labels: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'magenta');
+        log(`Selected Labels: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'pink');
 
         const action = await selectOption('Choose action:', [
             { label: 'Add/Select Existing Label', value: 'add' },

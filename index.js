@@ -272,7 +272,7 @@ async function generateCommitMessage(changesData, options = {}) {
     const template = loadTemplate();
     if (template) {
       payload.custom_template = template;
-      log('✓ Custom template loaded', 'magenta');
+      log('✓ Custom template loaded', 'pink');
     } else {
       log('✗ No template found. Use: gitset template --sync', 'yellow');
     }
@@ -283,7 +283,7 @@ async function generateCommitMessage(changesData, options = {}) {
     payload.commit_history = commits;
     payload.historical_count = options.historicalCount;
 
-    log(`\n→ Historical Analysis Debug:`, 'magenta');
+    log(`\n→ Historical Analysis Debug:`, 'pink');
     log(`   Requested: ${options.historicalCount} commits`, 'cyan');
     log(`   Retrieved: ${commits.length} commits`, 'cyan');
     log(`   Commits:`, 'cyan');
@@ -364,7 +364,7 @@ async function commandCommit(options = {}) {
   let customTemplate = null;
   if (options.custom) {
     customTemplate = loadTemplate();
-    if (customTemplate) log('→ Custom template loaded', 'magenta');
+    if (customTemplate) log('→ Custom template loaded', 'pink');
   }
 
   let currentMessage = null;
@@ -391,14 +391,14 @@ async function commandCommit(options = {}) {
     console.clear();
     log('=== Commit Message Draft ===', 'blue');
     if (currentVersion > 1) {
-      log(`(Version ${currentVersion})`, 'magenta');
+      log(`(Version ${currentVersion})`, 'pink');
     }
     log('\n' + '-'.repeat(50), 'reset');
     console.log(currentMessage);
     log('-'.repeat(50) + '\n', 'reset');
 
     if (usage) {
-      log('📈 Usage quota:', 'magenta');
+      log('📈 Usage quota:', 'pink');
       log(`   Plan: ${usage.plan}`, 'reset');
       log(`   Used: ${usage.used_requests}`, 'reset');
       log(`   Remaining: ${usage.remaining_requests}`, 'reset');
@@ -794,12 +794,12 @@ function showHelp() {
   log('\n🚀 Gitset CLI v2.1', 'blue');
   log('\nAvailable commands:\n', 'cyan');
 
-  log('AUTHENTICATION:', 'magenta');
+  log('AUTHENTICATION:', 'pink');
   log('  gitset auth               Authenticate with Gitset Key', 'green');
   log('  gitset verify             Verify server connection', 'green');
   log('  gitset logout             Close session', 'green');
 
-  log('\nCOMMIT GENERATION:', 'magenta');
+  log('\nCOMMIT GENERATION:', 'pink');
   log('  gitset commit             Generate commit message (unstaged changes)', 'green');
   log('  gitset commit --staged    Generate commit message (staged only)', 'green');
   log('  gitset commit --all       Generate commit message (all changes)', 'green');
@@ -807,7 +807,7 @@ function showHelp() {
   log('  gitset commit --historical --N   Use last N commits for style (5-20)', 'green');
   log('  gitset commit --historical       Use last 10 commits (default)', 'green');
 
-  log('\nPROJECT MANAGEMENT:', 'magenta');
+  log('\nPROJECT MANAGEMENT:', 'pink');
   log('  gitset init               Initialize Gitset templates', 'green');
   log('  gitset issue              Create new issue with AI', 'green');
   log('  gitset issue --close      Interactive issue closing', 'green');
@@ -817,12 +817,12 @@ function showHelp() {
   log('  gitset dependabot         Analyze and resolve Dependabot alerts', 'green');
   log('  gitset repo --labelspack  Apply custom label pack to repository', 'green');
 
-  log('\nTEMPLATE MANAGEMENT:', 'magenta');
+  log('\nTEMPLATE MANAGEMENT:', 'pink');
   log('  gitset template --sync    Create/update commit message template', 'green');
   log('  gitset template --show    Display current template', 'green');
   log('  gitset template --delete  Remove template', 'green');
 
-  log('\nTREE VISUALIZATION:', 'magenta');
+  log('\nTREE VISUALIZATION:', 'pink');
   log('  gitset tree               Show complete project structure', 'green');
   log('  gitset tree --flag /node_modules --flag .astro', 'green');
   log('                            Exclude specific folders', 'green');
@@ -831,11 +831,11 @@ function showHelp() {
   log('  gitset tree --flag --gitignore', 'green');
   log('                            Exclude all patterns from .gitignore', 'green');
 
-  log('\nUTILITIES:', 'magenta');
+  log('\nUTILITIES:', 'pink');
   log('  gitset status             View repository status', 'green');
   log('  gitset help               Show this help', 'green');
 
-  log('\nEXAMPLES:', 'magenta');
+  log('\nEXAMPLES:', 'pink');
   log('  gitset commit --custom --historical --15', 'cyan');
   log('  gitset commit --all --historical', 'cyan');
   log('  gitset commit --staged --custom', 'cyan');
@@ -1282,7 +1282,7 @@ async function manageLabelsInteractive(currentLabels) {
   while (true) {
     console.clear();
     log('=== Label Management ===', 'blue');
-    log(`Selected Labels: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'magenta');
+    log(`Selected Labels: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'pink');
 
     const action = await selectOption('Choose action:', [
       { label: 'Add/Select Existing Label', value: 'add' },
@@ -1455,7 +1455,7 @@ async function commandPR(options = {}) {
   let customTemplate = null;
   if (options.custom) {
     customTemplate = loadPRTemplate();
-    if (customTemplate) log('→ Using custom PR template', 'magenta');
+    if (customTemplate) log('→ Using custom PR template', 'pink');
   }
 
   log('\n→ Generating PR draft with AI...', 'yellow');
@@ -1488,10 +1488,10 @@ async function commandPR(options = {}) {
     log('=== PR Draft ===', 'blue');
     log(`\nTITLE: ${currentTitle}`, 'green');
     log(`TARGET: ${targetBranch} ← ${currentBranch}`, 'cyan');
-    log(`LABELS: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'magenta');
-    log(`MILESTONE: ${selectedMilestone || 'None'}`, 'magenta');
-    log(`ASSIGNEES: ${selectedAssignees.join(', ') || 'None'}`, 'magenta');
-    log(`REVIEWERS: ${selectedReviewers.join(', ') || 'None'}`, 'magenta');
+    log(`LABELS: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'pink');
+    log(`MILESTONE: ${selectedMilestone || 'None'}`, 'pink');
+    log(`ASSIGNEES: ${selectedAssignees.join(', ') || 'None'}`, 'pink');
+    log(`REVIEWERS: ${selectedReviewers.join(', ') || 'None'}`, 'pink');
     log(`STATUS: ${isDraft ? 'Draft' : 'Ready'}`, 'yellow');
     log(`\nBODY PREVIEW:\n${currentBody.substring(0, 300)}...\n(Full body hidden for brevity)`, 'reset');
 
@@ -1737,7 +1737,7 @@ async function commandIssue(options = {}) {
   if (options.custom) {
     customTemplate = loadIssueTemplate();
     if (customTemplate) {
-      log('→ Using custom issue template', 'magenta');
+      log('→ Using custom issue template', 'pink');
     } else {
       log('⚠️  No custom issue template found. Run gitset init', 'yellow');
     }
@@ -1770,9 +1770,9 @@ async function commandIssue(options = {}) {
     console.clear();
     log('=== Issue Draft ===', 'blue');
     log(`\nTITLE: ${currentTitle}`, 'green');
-    log(`\nLABELS: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'magenta');
-    log(`MILESTONE: ${selectedMilestone || 'None'}`, 'magenta');
-    log(`ASSIGNEES: ${selectedAssignees.join(', ') || 'None'}`, 'magenta');
+    log(`\nLABELS: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'pink');
+    log(`MILESTONE: ${selectedMilestone || 'None'}`, 'pink');
+    log(`ASSIGNEES: ${selectedAssignees.join(', ') || 'None'}`, 'pink');
     log(`\nBODY PREVIEW:\n${currentBody.substring(0, 300)}...\n(Full body hidden for brevity)`, 'reset');
 
     const action = await selectOption('What would you like to do?', [
@@ -2061,7 +2061,7 @@ async function commandReadme(options = {}) {
   let customTemplate = null;
   if (options.custom) {
     customTemplate = loadReadmeTemplate();
-    if (customTemplate) log('✓ Using custom README template', 'magenta');
+    if (customTemplate) log('✓ Using custom README template', 'pink');
   }
 
   // Get Repo Info for Deep Wiki

@@ -253,7 +253,7 @@ async function commandDependabotResolver(config, args) {
                 log(`Found ${autoResolvable.length} auto-resolvable alerts (RISK_NONE).`, 'green');
 
                 if (isDryRun) {
-                    log('\n=== DRY RUN: Proposed Actions ===', 'magenta');
+                    log('\n=== DRY RUN: Proposed Actions ===', 'pink');
                     autoResolvable.forEach(alert => {
                         console.log(`\n[Alert #${alert.id}] ${alert.depName}`);
                         console.log(`  Update: ${alert.localVersion} -> ${alert.patchedVersion}`);
@@ -318,7 +318,7 @@ async function commandDependabotResolver(config, args) {
                     }
 
                     log('\n✓ Updates completed!', 'green');
-                    log('● Run "gitset commit" to review and commit these changes.', 'magenta');
+                    log('● Run "gitset commit" to review and commit these changes.', 'pink');
                 }
             }
 
