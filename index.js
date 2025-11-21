@@ -1068,24 +1068,108 @@ Edit the YAML block below to define your labels. Once customized, change \`gitse
 # 'color' is optional (hex code like #RRGGBB). If omitted, a random color will be assigned.
 # 'description' is optional. If omitted, it will be empty.
 
+- name: agent
+  color: "#00e676"
+  description: Related to autonomous agents and agent-based functionality.
+- name: AI
+  color: "#e040fb"
+  description: Related to artificial intelligence and machine learning features.
+- name: api
+  color: "#009688"
+  description: Related to API design, endpoints, or integration.
+- name: architecture
+  color: "#5c6bc0"
+  description: Related to system architecture and design decisions.
+- name: backend
+  color: "#26a69a"
+  description: Related to server-side logic and APIs.
+- name: breaking-change
+  color: "#d32f2f"
+  description: Changes that break backwards compatibility.
 - name: bug
   color: "#d73a4a"
   description: Something isn't working as expected.
-- name: feature
-  color: "#a2eeef"
-  description: A new feature or request.
+- name: cloud
+  color: "#42a5f5"
+  description: Related to cloud services and deployment.
+- name: core
+  color: "#3f51b5"
+  description: Core functionality or critical system components.
+- name: database
+  color: "#5e35b1"
+  description: Related to database schema, queries, or storage.
+- name: deprecated
+  color: "#795548"
+  description: Features or code that are no longer supported.
+- name: deprecation
+  color: "#ff6f00"
+  description: Features or code marked for deprecation.
+- name: development
+  color: "#4caf50"
+  description: Related to development environment or tooling.
 - name: documentation
   color: "#0075ca"
   description: Improvements or additions to documentation.
-- name: refactor
-  color: "" # This will result in a random color
-  description: Code structure changes without changing external behavior.
-- name: priority: high
-  # No color specified, will be random
-  description: This issue needs immediate attention.
+- name: feature
+  color: "#a2eeef"
+  description: A new feature or request.
+- name: fix
+  color: "#ff5722"
+  description: Bug fix or correction.
+- name: frontend
+  color: "#29b6f6"
+  description: Related to user interface and client-side code.
 - name: help wanted
   color: "#008672"
-  description: Extra attention is needed
+  description: Extra attention is needed.
+- name: implementation
+  color: "#03a9f4"
+  description: Implementation of approved features or changes.
+- name: infrastructure
+  color: "#8d6e63"
+  description: Related to infrastructure setup and configuration.
+- name: migration
+  color: "#9c27b0"
+  description: Data or code migration tasks.
+- name: priority:high
+  color: "#e91e63"
+  description: This issue needs immediate attention.
+- name: priority:low
+  color: "#8bc34a"
+  description: This issue can be addressed when time permits.
+- name: priority:medium
+  color: "#ff9800"
+  description: This issue should be addressed soon.
+- name: production
+  color: "#f44336"
+  description: Issues or changes affecting production environment.
+- name: project-setup
+  color: "#66bb6a"
+  description: Initial project configuration and setup tasks.
+- name: refactor
+  color: "#ffa726"
+  description: Code structure changes without changing external behavior.
+- name: refine
+  color: "#ffc107"
+  description: Improvements and refinements to existing features.
+- name: spec
+  color: "#00bcd4"
+  description: Specification or design documentation needed.
+- name: style
+  color: "#f06292"
+  description: Related to styling, theming, and visual appearance.
+- name: UI
+  color: "#ab47bc"
+  description: Related to visual design and interface elements.
+- name: UX
+  color: "#ec407a"
+  description: Related to user experience and interactions.
+- name: UX/UI
+  color: "#7e57c2"
+  description: Related to both user experience and interface design.
+- name: wip
+  color: "#ffeb3b"
+  description: Work in progress, not ready for review.
 \`\`\`
 `;
 
