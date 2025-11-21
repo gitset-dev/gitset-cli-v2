@@ -251,21 +251,62 @@ async function generateAbout(config) {
             description = data.description;
             topics = data.topics || [];
 
-            log('\n✨ AI Generated Content:', 'green');
-            log(`\nDescription:\n${description}`, 'reset');
-            log(`\nTopics:\n${topics.join(', ')}`, 'reset');
+            while (true) {
+                log('\n✨ AI Generated Content:', 'green');
+                log(`\nDescription:\n${description}`, 'reset');
+                log(`\nTopics:\n${topics.join(', ')}`, 'reset');
 
-            log('\nWhat would you like to do?', 'cyan');
-            log('1. Apply changes', 'reset');
-            log('2. Edit manually', 'reset');
-            log('3. Cancel', 'reset');
-            const action = await askQuestion('> ');
+                log('\nWhat would you like to do?', 'cyan');
+                log('1. Apply changes', 'reset');
+                log('2. Refine with AI', 'reset');
+                log('3. Edit manually', 'reset');
+                log('4. Cancel', 'reset');
+                const action = await askQuestion('> ');
 
-            if (action.trim() === '3') return;
-            if (action.trim() === '2') {
-                description = await askQuestion(`Description (${description}): `) || description;
-                const topicsStr = await askQuestion(`Topics (${topics.join(', ')}): `);
-                if (topicsStr) topics = topicsStr.split(',').map(t => t.trim());
+                if (action.trim() === '4') return;
+
+                if (action.trim() === '1') {
+                    break; // Proceed to apply
+                }
+
+                if (action.trim() === '3') {
+                    description = await askQuestion(`Description (${description}): `) || description;
+                    const topicsStr = await askQuestion(`Topics (${topics.join(', ')}): `);
+                    if (topicsStr) topics = topicsStr.split(',').map(t => t.trim());
+                    break; // Proceed to apply
+                }
+
+                if (action.trim() === '2') {
+                    const instruction = await askQuestion('\nRefinement instruction (e.g. "Make it shorter", "Add react tag"): ');
+                    log('\n🧠 Refining...', 'yellow');
+
+                    try {
+                        const refineRes = await fetch('https://gitset-core-v2.vercel.app/api/about', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'refine',
+                                gitset_key: config.gitset_key,
+                                current_description: description,
+                                current_topics: topics,
+                                instruction
+                            })
+                        });
+
+                        if (!refineRes.ok) {
+                            const err = await refineRes.json();
+                            log(`✗ Refinement failed: ${err.error}`, 'red');
+                            continue;
+                        }
+
+                        const refinedData = await refineRes.json();
+                        description = refinedData.description;
+                        topics = refinedData.topics || [];
+
+                    } catch (e) {
+                        log(`✗ Error refining: ${e.message}`, 'red');
+                    }
+                }
             }
 
         } catch (error) {
