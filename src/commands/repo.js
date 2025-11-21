@@ -148,8 +148,148 @@ async function applyLabelPack() {
 async function commandRepo(config, args) {
     if (args.includes('--labelspack')) {
         await applyLabelPack();
+    } else if (args.includes('--about')) {
+        await generateAbout(config);
     } else {
-        log('Usage: gitset repo --labelspack', 'yellow');
+        log('Usage: gitset repo [options]', 'yellow');
+        log('Options:', 'reset');
+        log('  --labelspack   Apply the label pack defined in ~/.gitset/labels.md', 'reset');
+        log('  --about        Generate and apply repository description and topics (AI or Manual)', 'reset');
+    }
+}
+
+function askQuestion(query) {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+
+    return new Promise(resolve => rl.question(query, ans => {
+        rl.close();
+        resolve(ans);
+    }));
+}
+
+async function generateAbout(config) {
+    log('\n🤖 Gitset About Generator', 'cyan');
+    log('=========================', 'cyan');
+
+    if (!execCommand('gh --version')) {
+        log('✗ GitHub CLI (gh) is not installed.', 'red');
+        return;
+    }
+
+    // Get current repo info
+    const repoUrl = execCommand('git config --get remote.origin.url');
+    if (!repoUrl) {
+        log('✗ Not a git repository or no remote origin found.', 'red');
+        return;
+    }
+
+    // Extract owner/name from URL (naive)
+    // git@github.com:owner/name.git or https://github.com/owner/name.git
+    let owner, name;
+    try {
+        const match = repoUrl.match(/[:/]([^/]+)\/([^/.]+)(?:\.git)?$/);
+        if (match) {
+            owner = match[1];
+            name = match[2];
+        }
+    } catch (e) { }
+
+    log(`Repository: ${owner}/${name}`, 'reset');
+
+    const mode = await askQuestion('\nChoose mode:\n[A]I Generate\n[M]anual Entry\n> ');
+
+    let description = '';
+    let topics = [];
+
+    if (mode.toLowerCase() === 'a') {
+        if (!config.gitset_key) {
+            log('✗ Gitset Key is required for AI generation. Run `gitset init` to configure.', 'red');
+            return;
+        }
+
+        log('\n🧠 Analyzing repository...', 'yellow');
+
+        // Gather context
+        let readme = '';
+        if (fs.existsSync('README.md')) readme = fs.readFileSync('README.md', 'utf8');
+
+        let packageJson = null;
+        if (fs.existsSync('package.json')) packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+
+        try {
+            const response = await fetch('https://gitset-core-v2.vercel.app/api/about', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'generate',
+                    gitset_key: config.gitset_key,
+                    repo_info: { owner, name },
+                    file_context: { readme, packageJson }
+                })
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.error || 'API Error');
+            }
+
+            const data = await response.json();
+            description = data.description;
+            topics = data.topics || [];
+
+            log('\n✨ AI Generated Content:', 'green');
+            log(`\nDescription:\n${description}`, 'reset');
+            log(`\nTopics:\n${topics.join(', ')}`, 'reset');
+
+            const action = await askQuestion('\n[A]pply  [E]dit  [C]ancel\n> ');
+            if (action.toLowerCase() === 'c') return;
+            if (action.toLowerCase() === 'e') {
+                description = await askQuestion(`Description (${description}): `) || description;
+                const topicsStr = await askQuestion(`Topics (${topics.join(', ')}): `);
+                if (topicsStr) topics = topicsStr.split(',').map(t => t.trim());
+            }
+
+        } catch (error) {
+            log(`✗ Error generating content: ${error.message}`, 'red');
+            return;
+        }
+
+    } else if (mode.toLowerCase() === 'm') {
+        description = await askQuestion('Description: ');
+        const topicsStr = await askQuestion('Topics (comma separated): ');
+        topics = topicsStr.split(',').map(t => t.trim()).filter(Boolean);
+    } else {
+        return;
+    }
+
+    if (!description && topics.length === 0) {
+        log('No content to apply.', 'yellow');
+        return;
+    }
+
+    log('\nApplying changes to GitHub...', 'yellow');
+
+    try {
+        if (description) {
+            // Escape quotes for shell
+            const safeDesc = description.replace(/"/g, '\\"');
+            execCommand(`gh repo edit --description "${safeDesc}"`);
+            log('✓ Description updated', 'green');
+        }
+
+        if (topics.length > 0) {
+            const safeTopics = topics.join(',');
+            execCommand(`gh repo edit --add-topic "${safeTopics}"`);
+            log('✓ Topics updated', 'green');
+        }
+
+        log('\n🎉 Repository updated successfully!', 'green');
+
+    } catch (error) {
+        log(`✗ Failed to update repository: ${error.message}`, 'red');
     }
 }
 
