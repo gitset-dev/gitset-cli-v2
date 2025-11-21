@@ -219,6 +219,12 @@ async function generateAbout(config) {
         let packageJson = null;
         if (fs.existsSync('package.json')) packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 
+        let userContext = '';
+        if (!readme && !packageJson) {
+            log('\n⚠️  No README.md or package.json found.', 'yellow');
+            userContext = await askQuestion('Please provide a brief description of the project to help the AI:\n> ');
+        }
+
         try {
             const response = await fetch('https://gitset-core-v2.vercel.app/api/about', {
                 method: 'POST',
@@ -227,7 +233,7 @@ async function generateAbout(config) {
                     action: 'generate',
                     gitset_key: config.gitset_key,
                     repo_info: { owner, name },
-                    file_context: { readme, packageJson }
+                    file_context: { readme, packageJson, userContext }
                 })
             });
 
