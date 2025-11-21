@@ -855,6 +855,8 @@ function showHelp() {
   log('  gitset tree --flag /node_modules --flag /dist', 'cyan');
   log('  gitset tree --flag .png --flag .jpg', 'cyan');
   log('  gitset tree --flag --gitignore', 'cyan');
+  log('  gitset gitignore          Generate .gitignore (auto-detect)', 'cyan');
+  log('  gitset gitignore --select Select templates interactively', 'cyan');
 
   log('\nNOTE:', 'yellow');
   log('  Historical range: 5-20 commits (default: 10)', 'yellow');
@@ -2306,6 +2308,8 @@ async function main() {
       break;
     }
 
+
+
     case 'release': {
       const commandRelease = require('./src/commands/release');
       const config = loadConfig();
@@ -2326,6 +2330,15 @@ async function main() {
       await commandRepo(config, args.slice(1));
       break;
     }
+
+    case 'gitignore': {
+      const commandGitignore = require('./src/commands/gitignore');
+      const config = loadConfig();
+      await commandGitignore(config, args.slice(1));
+      break;
+    }
+
+
 
     case 'template':
       commandTemplate(args[1]);
