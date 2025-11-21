@@ -1974,6 +1974,21 @@ async function commandReadme(options = {}) {
     if (customTemplate) log('→ Using custom README template', 'magenta');
   }
 
+  // Get Repo Info for Deep Wiki
+  let repoInfo = null;
+  try {
+    const remoteUrl = require('child_process').execSync('git remote get-url origin', { encoding: 'utf8' }).trim();
+    // Parse owner/repo from URL (supports https and ssh)
+    // https://github.com/owner/repo.git or git@github.com:owner/repo.git
+    const match = remoteUrl.match(/[:/]([\w-]+)\/([\w-]+)(\.git)?$/);
+    if (match) {
+      repoInfo = { owner: match[1], name: match[2] };
+      log(`→ Detected Remote: ${repoInfo.owner}/${repoInfo.name}`, 'cyan');
+    }
+  } catch (e) {
+    // Ignore if no remote
+  }
+
   log('\n→ Generating README with AI...', 'yellow');
 
   let draft;
@@ -1981,7 +1996,8 @@ async function commandReadme(options = {}) {
     draft = await callReadmeApi({
       action: 'generate',
       analysis,
-      custom_template: customTemplate
+      custom_template: customTemplate,
+      repo_info: repoInfo
     });
   } catch (error) {
     log(`✗ Error: ${error.message}`, 'red');
