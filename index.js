@@ -828,6 +828,7 @@ function showHelp() {
   log('  gitset release            Manage Tags & Releases', 'green');
   log('  gitset readme             Generate/Update README', 'green');
   log('  gitset dependabot         Analyze and resolve Dependabot alerts', 'green');
+  log('  gitset repo --labelspack  Apply custom label pack to repository', 'green');
 
   log('\nTEMPLATE MANAGEMENT:', 'magenta');
   log('  gitset template --sync    Create/update commit message template', 'green');
@@ -1048,6 +1049,51 @@ npm start
     log('✓ Created Release template: ~/.gitset/RELEASE-TEMPLATE.md', 'green');
   } else {
     log('ℹ Release template already exists', 'yellow');
+  }
+
+  // Labels Template
+  const labelsTemplatePath = path.join(CONFIG_DIR, 'labels.md');
+  const labelsBoilerplate = `<!-- gitset-labels-customized: false -->
+# My Custom GitHub Labels
+
+This file defines the custom labels to be applied to your GitHub repositories using \`gitset repo --labelspack\`.
+Edit the YAML block below to define your labels. Once customized, change \`gitset-labels-customized: false\` to \`true\`.
+
+---
+
+\`\`\`yaml
+# Define your labels here.
+# Each label should be an item in the list.
+# 'name' is required.
+# 'color' is optional (hex code like #RRGGBB). If omitted, a random color will be assigned.
+# 'description' is optional. If omitted, it will be empty.
+
+- name: bug
+  color: "#d73a4a"
+  description: Something isn't working as expected.
+- name: feature
+  color: "#a2eeef"
+  description: A new feature or request.
+- name: documentation
+  color: "#0075ca"
+  description: Improvements or additions to documentation.
+- name: refactor
+  color: "" # This will result in a random color
+  description: Code structure changes without changing external behavior.
+- name: priority: high
+  # No color specified, will be random
+  description: This issue needs immediate attention.
+- name: help wanted
+  color: "#008672"
+  description: Extra attention is needed
+\`\`\`
+`;
+
+  if (!fs.existsSync(labelsTemplatePath)) {
+    fs.writeFileSync(labelsTemplatePath, labelsBoilerplate);
+    log('✓ Created Labels template: ~/.gitset/labels.md', 'green');
+  } else {
+    log('ℹ Labels template already exists', 'yellow');
   }
 }
 
@@ -2187,6 +2233,13 @@ async function main() {
       const commandDependabotResolver = require('./src/commands/dependabot-resolver');
       const config = loadConfig();
       await commandDependabotResolver(config, args.slice(1));
+      break;
+    }
+
+    case 'repo': {
+      const commandRepo = require('./src/commands/repo');
+      const config = loadConfig();
+      await commandRepo(config, args.slice(1));
       break;
     }
 
