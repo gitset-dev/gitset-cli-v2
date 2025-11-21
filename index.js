@@ -5,25 +5,12 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const readline = require('readline');
+const { log, askQuestion, selectOption, colors } = require('./src/utils/ui');
 
 const BACKEND_URL = 'https://gitset-core-v2.vercel.app/api/commit';
 const CONFIG_DIR = path.join(os.homedir(), '.gitset');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const TEMPLATE_FILE = path.join(CONFIG_DIR, 'COMMIT-MSG-TEMPLATE.md');
-
-const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  blue: '\x1b[34m',
-  magenta: '\x1b[35m'
-};
-
-function log(msg, color = 'reset') {
-  console.log(`${colors[color]}${msg}${colors.reset}`);
-}
 
 function execCommand(cmd) {
   try {
@@ -285,9 +272,9 @@ async function generateCommitMessage(changesData, options = {}) {
     const template = loadTemplate();
     if (template) {
       payload.custom_template = template;
-      log('→ Custom template loaded', 'magenta');
+      log('✓ Custom template loaded', 'magenta');
     } else {
-      log('⚠️  No template found. Use: gitset template --sync', 'yellow');
+      log('✗ No template found. Use: gitset template --sync', 'yellow');
     }
   }
 
@@ -296,7 +283,7 @@ async function generateCommitMessage(changesData, options = {}) {
     payload.commit_history = commits;
     payload.historical_count = options.historicalCount;
 
-    log(`\n📊 Historical Analysis Debug:`, 'magenta');
+    log(`\n→ Historical Analysis Debug:`, 'magenta');
     log(`   Requested: ${options.historicalCount} commits`, 'cyan');
     log(`   Retrieved: ${commits.length} commits`, 'cyan');
     log(`   Commits:`, 'cyan');
@@ -368,7 +355,7 @@ async function commandCommit(options = {}) {
 
   const files = getChangedFiles(mode);
   if (files.length > 0) {
-    log(`→ Files detected: ${files.length}`, 'yellow');
+    log(`● Files detected: ${files.length}`, 'yellow');
     if (files.length < 10) {
       files.forEach(f => log(`  ${f.status === 'A' ? '+' : f.status === 'M' ? '•' : '-'} ${f.file}`, 'reset'));
     }
@@ -692,7 +679,7 @@ async function commandVerify() {
   }
 
   log('\n🔍 Verifying connection with Gitset...\n', 'cyan');
-  log(`→ Key: ${gitsetKey.substring(0, 12)}...`, 'blue');
+  log(`● Key: ${gitsetKey.substring(0, 12)}...`, 'blue');
 
   try {
     const response = await fetch(BACKEND_URL, {
@@ -895,35 +882,6 @@ function getExistingLabels() {
     return JSON.parse(output).map(l => l.name);
   } catch {
     return [];
-  }
-}
-
-async function askQuestion(query) {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-  });
-  return new Promise(resolve => {
-    rl.question(query, answer => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
-
-async function selectOption(title, options) {
-  log(`\n${title}`, 'blue');
-  options.forEach((opt, i) => {
-    log(`${i + 1}. ${opt.label}`, 'cyan');
-  });
-
-  while (true) {
-    const answer = await askQuestion('\nSelect an option (number): ');
-    const index = parseInt(answer) - 1;
-    if (index >= 0 && index < options.length) {
-      return options[index].value;
-    }
-    log('Invalid selection', 'red');
   }
 }
 
@@ -2103,7 +2061,7 @@ async function commandReadme(options = {}) {
   let customTemplate = null;
   if (options.custom) {
     customTemplate = loadReadmeTemplate();
-    if (customTemplate) log('→ Using custom README template', 'magenta');
+    if (customTemplate) log('✓ Using custom README template', 'magenta');
   }
 
   // Get Repo Info for Deep Wiki

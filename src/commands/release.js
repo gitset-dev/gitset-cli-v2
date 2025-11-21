@@ -1,23 +1,8 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
 const os = require('os');
-
-const BACKEND_URL = 'https://gitset-core-v2.vercel.app/api/release';
-
-function log(msg, color = 'reset') {
-    const colors = {
-        reset: '\x1b[0m',
-        green: '\x1b[32m',
-        yellow: '\x1b[33m',
-        red: '\x1b[31m',
-        cyan: '\x1b[36m',
-        blue: '\x1b[34m',
-        magenta: '\x1b[35m'
-    };
-    console.log(`${colors[color] || colors.reset}${msg}${colors.reset}`);
-}
+const { log, askQuestion, selectOption } = require('../utils/ui');
 
 function execCommand(cmd) {
     try {
@@ -27,170 +12,99 @@ function execCommand(cmd) {
     }
 }
 
-function getGitConfig() {
-    const remoteUrl = execCommand('git config --get remote.origin.url');
-    if (!remoteUrl) return null;
-
-    const match = remoteUrl.match(/[:/]([^/]+)\/([^/.]+)(?:\.git)?$/);
-    if (!match) return null;
-
-    return {
-        owner: match[1],
-        repo: match[2]
-    };
-}
-
-function getCommitsSince(tag) {
-    const range = tag ? `${tag}..HEAD` : 'HEAD';
-    const output = execCommand(`git log ${range} --pretty=format:"%h|%an|%s"`);
-    if (!output) return [];
-
-    return output.split('\n').map(line => {
-        const [hash, author, message] = line.split('|');
-        return { hash, author, message };
-    });
-}
-
-function getLastTag() {
-    return execCommand('git describe --tags --abbrev=0') || null;
-}
-
-async function askQuestion(query) {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout
-    });
-    return new Promise(resolve => rl.question(query, ans => {
-        rl.close();
-        resolve(ans.trim());
-    }));
-}
-
-async function selectOption(title, options) {
-    log(`\n${title}`, 'blue');
-    options.forEach((opt, i) => {
-        log(`${i + 1}. ${opt.label}`, 'cyan');
-    });
-
-    while (true) {
-        const answer = await askQuestion('\nSelect an option (number): ');
-        const index = parseInt(answer) - 1;
-        if (index >= 0 && index < options.length) {
-            return options[index].value;
-        }
-        log('Invalid selection', 'red');
+async function commandRelease(config, args) {
+    if (!config.gitset_key) {
+        log('✗ Gitset Key is required. Run `gitset init` to configure.', 'red');
+        return;
     }
-}
 
-async function generateReleaseNotes(commits, options, config) {
+    // 1. Check if git repo
+    if (!execCommand('git rev-parse --is-inside-work-tree')) {
+        log('✗ Not a git repository.', 'red');
+        return;
+    }
+
+    // 2. Get current version (from package.json or tag)
+    let currentVersion = '0.0.0';
+    let packageJsonPath = path.join(process.cwd(), 'package.json');
+    let hasPackageJson = fs.existsSync(packageJsonPath);
+
+    if (hasPackageJson) {
+        try {
+            const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+            currentVersion = pkg.version;
+        } catch (e) { }
+    } else {
+        // Try git tags
+        const lastTag = execCommand('git describe --tags --abbrev=0');
+        if (lastTag) currentVersion = lastTag.replace(/^v/, '');
+    }
+
+    log(`Current Version: ${currentVersion}`, 'cyan');
+
+    // 3. Determine new version
+    const type = await selectOption('Select release type:', [
+        { label: 'Patch (x.x.1)', value: 'patch' },
+        { label: 'Minor (x.1.0)', value: 'minor' },
+        { label: 'Major (1.x.x)', value: 'major' },
+        { label: 'Custom', value: 'custom' }
+    ]);
+
+    let newVersion = '';
+    const parts = currentVersion.split('.').map(Number);
+
+    if (type === 'patch') newVersion = `${parts[0]}.${parts[1]}.${parts[2] + 1}`;
+    if (type === 'minor') newVersion = `${parts[0]}.${parts[1] + 1}.0`;
+    if (type === 'major') newVersion = `${parts[0] + 1}.0.0`;
+    if (type === 'custom') {
+        newVersion = await askQuestion('Enter version: ');
+    }
+
+    if (!newVersion) return;
+
+    log(`\n→ Preparing release v${newVersion}...`, 'yellow');
+
+    // 4. Generate Release Notes
+    log('→ Generating release notes from commits...', 'cyan');
+
+    // Get commits since last tag
+    const lastTag = execCommand('git describe --tags --abbrev=0');
+    const range = lastTag ? `${lastTag}..HEAD` : 'HEAD';
+    const commits = execCommand(`git log ${range} --pretty=format:"%s"`);
+
+    let releaseNotes = '';
+
     try {
-        const response = await fetch(BACKEND_URL, {
+        const response = await fetch('https://gitset-core-v2.vercel.app/api/release', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+                action: 'generate',
                 gitset_key: config.gitset_key,
-                action: options.action || 'generate',
-                commits,
-                draft_id: options.draftId,
-                instruction: options.instruction,
-                repo_info: options.repoInfo,
-                tag_name: options.tagName,
-                template: options.template
+                version: newVersion,
+                commits: commits
             })
         });
 
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'API Error');
+        }
+
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Server error');
-        return data;
+        releaseNotes = data.notes;
+
     } catch (error) {
-        log(`✗ Error generating notes: ${error.message}`, 'red');
-        return null;
-    }
-}
-
-async function commandRelease(config) {
-    if (!config || !config.gitset_key) {
-        log('✗ Not authenticated. Run gitset auth first.', 'red');
-        return;
+        log(`✗ Failed to generate notes: ${error.message}`, 'red');
+        releaseNotes = `## Release v${newVersion}\n\n${commits}`;
     }
 
-    const repoInfo = getGitConfig();
-    if (!repoInfo) {
-        log('✗ Could not detect GitHub repository info.', 'red');
-        return;
-    }
-
-    // Check if gh is installed
-    const ghVersion = execCommand('gh --version');
-    if (!ghVersion) {
-        log('✗ GitHub CLI (gh) is not installed or not in PATH.', 'red');
-        log('  Please install it to use the release manager: https://cli.github.com/', 'yellow');
-        return;
-    }
-
-    // Check if gh is authenticated
-    const user = execCommand('gh api user');
-    if (!user) {
-        log('✗ GitHub CLI not authenticated.', 'red');
-        log('  Run: gh auth login', 'yellow');
-        return;
-    }
-
-    log(`\n🚀 Release Manager for ${repoInfo.owner}/${repoInfo.repo}\n`, 'blue');
-
-    const lastTag = getLastTag();
-    log(`Latest tag: ${lastTag || 'None'}`, 'cyan');
-
-    // 1. Tag Configuration
-    const tagName = await askQuestion(`Tag name (e.g. v1.0.0) ${lastTag ? `[current: ${lastTag}]` : ''}: `);
-    if (!tagName) {
-        log('✗ Tag name required', 'red');
-        return;
-    }
-
-    const tagMsg = await askQuestion('Tag description (optional): ');
-
-    // 2. Commit Analysis
-    log('\n📊 Analyzing commits...', 'cyan');
-    let commits = getCommitsSince(lastTag);
-    log(`Found ${commits.length} commits since ${lastTag || 'start'}.`, 'green');
-
-    // Smart Analysis: Fetch diffs if few commits
-    if (commits.length <= 2) {
-        process.stdout.write('  ↳ Fetching detailed diffs for smart analysis... ');
-        commits = commits.map(c => {
-            const fileCountStr = execCommand(`git show --pretty="" --name-only ${c.hash} | wc -l`);
-            const fileCount = parseInt(fileCountStr || '0');
-
-            if (fileCount <= 5) {
-                const diff = execCommand(`git show ${c.hash}`);
-                return { ...c, diff };
-            }
-            return c;
-        });
-        console.log('Done.');
-    }
-
-    // 3. Generate Notes
-    log('\n🤖 Generating release notes...', 'magenta');
-    let notesData = await generateReleaseNotes(commits, {
-        tagName,
-        repoInfo,
-        template: 'detailed'
-    }, config);
-
-    if (!notesData) return;
-
-    let currentNotes = notesData.release_notes;
-    let draftId = notesData.draft_id;
-    let version = notesData.version_number;
-
-    // 4. Interactive Refinement
+    // 5. Review Loop
     while (true) {
-        console.clear();
-        log(`=== Release Notes (v${version}) ===`, 'blue');
-        console.log(currentNotes);
-        log('='.repeat(50));
+        log('\nRelease Notes Preview:', 'green');
+        console.log('----------------------------------------');
+        console.log(releaseNotes);
+        console.log('----------------------------------------');
 
         const action = await selectOption('What would you like to do?', [
             { label: 'Publish Release', value: 'publish' },
@@ -204,84 +118,74 @@ async function commandRelease(config) {
             return;
         }
 
-        if (action === 'refine') {
-            const instruction = await askQuestion('Refinement instruction: ');
-            log('Refining...', 'magenta');
-            const refined = await generateReleaseNotes(commits, {
-                action: 'refine',
-                draftId,
-                instruction,
-                tagName,
-                repoInfo
-            }, config);
-
-            if (refined) {
-                currentNotes = refined.release_notes;
-                version = refined.version_number;
-            }
-        } else if (action === 'edit') {
-            const tmpFile = path.join(os.tmpdir(), `gitset-release-${Date.now()}.md`);
-            fs.writeFileSync(tmpFile, currentNotes);
-            const editor = process.env.EDITOR || 'vi';
-            try {
-                const { spawnSync } = require('child_process');
-                spawnSync(editor, [tmpFile], { stdio: 'inherit' });
-                currentNotes = fs.readFileSync(tmpFile, 'utf8');
-                log('✓ Notes updated', 'green');
-            } catch (e) {
-                log('✗ Failed to open editor', 'red');
-            }
-            if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
-        } else if (action === 'publish') {
+        if (action === 'publish') {
             break;
         }
+
+        if (action === 'edit') {
+            log('Enter new notes (end with empty line):', 'cyan');
+            releaseNotes = await askQuestion('Paste new notes here (single line for now): ');
+        }
+
+        if (action === 'refine') {
+            const instruction = await askQuestion('Refinement instruction: ');
+            log('→ Refining...', 'yellow');
+            try {
+                const res = await fetch('https://gitset-core-v2.vercel.app/api/release', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'refine',
+                        gitset_key: config.gitset_key,
+                        current_notes: releaseNotes,
+                        instruction
+                    })
+                });
+                const data = await res.json();
+                releaseNotes = data.notes;
+            } catch (e) {
+                log(`✗ Error: ${e.message}`, 'red');
+            }
+        }
     }
 
-    // 5. Publish (Tag + Release)
-    log('\n📦 Publishing...', 'cyan');
+    // 6. Execute Release
+    log('\n→ Executing Release...', 'yellow');
+
+    // Update package.json
+    if (hasPackageJson) {
+        const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+        pkg.version = newVersion;
+        fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2));
+        log('✓ Updated package.json', 'green');
+        execCommand('git add package.json');
+        execCommand(`git commit -m "chore: release v${newVersion}"`);
+    }
 
     // Create Tag
-    try {
-        const tagExists = execCommand(`git tag -l ${tagName}`);
-        if (!tagExists) {
-            execCommand(`git tag -a ${tagName} -m "${tagMsg || tagName}"`);
-            log(`✓ Created local tag ${tagName}`, 'green');
-        } else {
-            log(`ℹ Tag ${tagName} already exists locally`, 'yellow');
-        }
+    execCommand(`git tag v${newVersion}`);
+    log('✓ Created git tag', 'green');
+
+    // Push
+    log('→ Pushing changes...', 'cyan');
+    execCommand('git push && git push --tags');
+
+    // Create GitHub Release
+    if (execCommand('gh --version')) {
+        log('→ Creating GitHub Release...', 'cyan');
+        // Write notes to temp file
+        const notesFile = path.join(os.tmpdir(), 'release_notes.md');
+        fs.writeFileSync(notesFile, releaseNotes);
 
         try {
-            execCommand(`git push origin ${tagName}`);
-            log(`✓ Pushed tag to origin`, 'green');
+            execCommand(`gh release create v${newVersion} --title "v${newVersion}" --notes-file "${notesFile}"`);
+            log('✓ GitHub Release published!', 'green');
+            log(`→ https://github.com/${config.repo_owner}/${config.repo_name}/releases/tag/v${newVersion}`, 'blue');
         } catch (e) {
-            log(`⚠️  Failed to push tag (might already exist on remote): ${e.message}`, 'yellow');
+            log(`✗ Failed to create GitHub release: ${e.message}`, 'red');
         }
-    } catch (e) {
-        log(`✗ Error creating tag: ${e.message}`, 'red');
-        return;
-    }
-
-    // Create Release on GitHub using gh CLI
-    try {
-        const tmpFile = path.join(os.tmpdir(), `gitset-release-notes-${Date.now()}.md`);
-        fs.writeFileSync(tmpFile, currentNotes);
-
-        log('→ Creating GitHub Release...', 'cyan');
-
-        const cmd = `gh release create "${tagName}" -F "${tmpFile}" -t "${tagName}"`;
-        const url = execCommand(cmd);
-
-        if (url) {
-            log(`\n✨ Release published successfully!`, 'green');
-            log(`🔗 ${url}`, 'blue');
-        } else {
-            log(`✗ Failed to create release via gh CLI`, 'red');
-        }
-
-        if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
-
-    } catch (e) {
-        log(`✗ Error publishing release: ${e.message}`, 'red');
+    } else {
+        log('✗ GitHub CLI not found. Skipping release creation.', 'yellow');
     }
 }
 

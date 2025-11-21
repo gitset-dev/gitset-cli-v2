@@ -1,23 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
 const { execSync } = require('child_process');
 const DependabotAnalyzer = require('../utils/dependabot-analyzer');
-
-// Helper for colors
-const colors = {
-    reset: '\x1b[0m',
-    red: '\x1b[31m',
-    green: '\x1b[32m',
-    yellow: '\x1b[33m',
-    blue: '\x1b[34m',
-    magenta: '\x1b[35m',
-    cyan: '\x1b[36m'
-};
-
-function log(msg, color = 'reset') {
-    console.log(`${colors[color] || colors.reset}${msg}${colors.reset}`);
-}
+const { log, askQuestion, selectOption, colors } = require('../utils/ui');
 
 function execCommand(cmd) {
     try {
@@ -25,17 +10,6 @@ function execCommand(cmd) {
     } catch (err) {
         return null;
     }
-}
-
-function askQuestion(query) {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout
-    });
-    return new Promise(resolve => rl.question(query, ans => {
-        rl.close();
-        resolve(ans.trim());
-    }));
 }
 
 function getLocalVersion(dependencyName, manifestPath) {
@@ -149,7 +123,7 @@ async function commandDependabotResolver(config, args) {
     const subcommand = shouldResolve ? 'resolve' : 'list';
 
     if (subcommand === 'list' || subcommand === 'resolve') {
-        log(`\n🔍 Fetching Dependabot alerts for ${owner}/${repo}...\n`, 'cyan');
+        log(`\n→ Fetching Dependabot alerts for ${owner}/${repo}...\n`, 'cyan');
 
         try {
             let alerts = [];
@@ -163,7 +137,7 @@ async function commandDependabotResolver(config, args) {
                     tokenError = e;
                     // Only fallback if it's an auth error
                     if (e.message.includes('Unauthorized') || e.message.includes('Forbidden')) {
-                        log(`⚠️  Stored token failed (${e.message}).`, 'yellow');
+                        log(`⚠ Stored token failed (${e.message}).`, 'yellow');
                         log('→ Falling back to local "gh" CLI...', 'cyan');
                     } else {
                         throw e; // Re-throw other errors (like 404)
@@ -291,7 +265,7 @@ async function commandDependabotResolver(config, args) {
                 const confirm = await askQuestion('Do you want to apply these updates locally? (y/n): ');
 
                 if (confirm.toLowerCase() === 'y') {
-                    log('\n🚀 Applying updates...', 'cyan');
+                    log('\n→ Applying updates...', 'cyan');
 
                     for (const alert of autoResolvable) {
                         log(`\n[${alert.depName}] Updating to ${alert.patchedVersion}...`, 'blue');
@@ -331,7 +305,7 @@ async function commandDependabotResolver(config, args) {
                                         fs.writeFileSync(fullPath, newContent);
                                         log(`  ✓ Updated ${alert.manifestPath}`, 'green');
                                     } else {
-                                        log(`  ⚠️  Could not replace version in ${alert.manifestPath}`, 'yellow');
+                                        log(`  → Could not replace version in ${alert.manifestPath}`, 'yellow');
                                     }
                                 } else {
                                     log(`  ✗ File not found: ${alert.manifestPath}`, 'red');
@@ -343,8 +317,8 @@ async function commandDependabotResolver(config, args) {
                         }
                     }
 
-                    log('\n✨ Updates completed!', 'green');
-                    log('👉 Run "gitset commit" to review and commit these changes.', 'magenta');
+                    log('\n✓ Updates completed!', 'green');
+                    log('● Run "gitset commit" to review and commit these changes.', 'magenta');
                 }
             }
 

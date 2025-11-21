@@ -1,35 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
+const { log, askQuestion, selectOption, colors } = require('../utils/ui');
 
 const BACKEND_URL = 'https://gitset-core-v2.vercel.app/api/gitignore';
-
-const colors = {
-    reset: '\x1b[0m',
-    green: '\x1b[32m',
-    yellow: '\x1b[33m',
-    red: '\x1b[31m',
-    cyan: '\x1b[36m',
-    blue: '\x1b[34m',
-    magenta: '\x1b[35m',
-    dim: '\x1b[2m'
-};
-
-function log(msg, color = 'reset') {
-    console.log(`${colors[color] || colors.reset}${msg}${colors.reset}`);
-}
-
-function askQuestion(query) {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-
-    return new Promise(resolve => rl.question(query, ans => {
-        rl.close();
-        resolve(ans);
-    }));
-}
 
 // Map common files to gitignore template names
 const AUTO_DETECT_MAP = {
@@ -169,9 +142,6 @@ async function commandGitignore(config, args) {
 
     if (flags.length > 0) {
         // User provided specific flags
-        // We need to match these flags to template names. 
-        // Since we don't have the full list locally, we might need to fetch it or send names to backend.
-        // Backend supports name matching.
         selectedTemplates = flags;
         log(`Selected via flags: ${selectedTemplates.join(', ')}`, 'cyan');
     } else if (args.includes('--select')) {
@@ -195,11 +165,11 @@ async function commandGitignore(config, args) {
 
     } else {
         // Auto-detection
-        log('🔍 Analyzing repository...', 'yellow');
+        log('→ Analyzing repository...', 'yellow');
         const detected = detectTemplates();
 
         if (detected.length === 0) {
-            log('⚠️  No specific frameworks detected.', 'yellow');
+            log('✗ No specific frameworks detected.', 'yellow');
             log('   Try `gitset gitignore --select` to choose manually.', 'dim');
             return;
         }
@@ -222,14 +192,18 @@ async function commandGitignore(config, args) {
     let mode = 'write';
 
     if (fs.existsSync(gitignorePath)) {
-        log('\n⚠️  .gitignore already exists.', 'yellow');
-        const choice = await askQuestion('Choose action: [O]verwrite, [A]ppend, [C]ancel: ');
-        const c = choice.toLowerCase();
+        log('\n→ .gitignore already exists.', 'yellow');
 
-        if (c === 'c') {
+        const action = await selectOption('What would you like to do?', [
+            { label: 'Overwrite', value: 'overwrite' },
+            { label: 'Append', value: 'append' },
+            { label: 'Cancel', value: 'cancel' }
+        ]);
+
+        if (action === 'cancel') {
             log('Cancelled.', 'yellow');
             return;
-        } else if (c === 'a') {
+        } else if (action === 'append') {
             mode = 'append';
             const existing = fs.readFileSync(gitignorePath, 'utf8');
             finalContent = existing + '\n\n' + result.content;

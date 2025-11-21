@@ -2,24 +2,10 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const readline = require('readline');
+const { log, askQuestion, selectOption } = require('../utils/ui');
 
 const CONFIG_DIR = path.join(os.homedir(), '.gitset');
 const LABELS_FILE = path.join(CONFIG_DIR, 'labels.md');
-
-const colors = {
-    reset: '\x1b[0m',
-    green: '\x1b[32m',
-    yellow: '\x1b[33m',
-    red: '\x1b[31m',
-    cyan: '\x1b[36m',
-    blue: '\x1b[34m',
-    magenta: '\x1b[35m'
-};
-
-function log(msg, color = 'reset') {
-    console.log(`${colors[color] || colors.reset}${msg}${colors.reset}`);
-}
 
 function execCommand(cmd) {
     try {
@@ -82,7 +68,7 @@ async function applyLabelPack() {
 
     // Check for customization flag
     if (content.includes('<!-- gitset-labels-customized: false -->')) {
-        log('⚠️  Label pack has not been customized.', 'yellow');
+        log('✗ Label pack has not been customized.', 'yellow');
         log('  Please edit ~/.gitset/labels.md and set gitset-labels-customized to true.', 'yellow');
         return;
     }
@@ -98,7 +84,7 @@ async function applyLabelPack() {
     const labels = parseLabelsYaml(yamlContent);
 
     if (labels.length === 0) {
-        log('⚠️  No labels found in the definition.', 'yellow');
+        log('✗ No labels found in the definition.', 'yellow');
         return;
     }
 
@@ -126,14 +112,14 @@ async function applyLabelPack() {
         // gh label create "name" --color "color" --description "desc"
 
         if (existingLabels.includes(name)) {
-            log(`• Updating label: ${name}`, 'blue');
+            log(`→ Updating label: ${name}`, 'blue');
             try {
                 execCommand(`gh label edit "${safeName}" --color "${safeColor}" --description "${safeDesc}"`);
             } catch (e) {
                 log(`  ✗ Failed to update ${name}`, 'red');
             }
         } else {
-            log(`+ Creating label: ${name}`, 'green');
+            log(`✓ Creating label: ${name}`, 'green');
             try {
                 execCommand(`gh label create "${safeName}" --color "${safeColor}" --description "${safeDesc}"`);
             } catch (e) {
@@ -158,20 +144,8 @@ async function commandRepo(config, args) {
     }
 }
 
-function askQuestion(query) {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-
-    return new Promise(resolve => rl.question(query, ans => {
-        rl.close();
-        resolve(ans);
-    }));
-}
-
 async function generateAbout(config) {
-    log('\n🤖 Gitset About Generator', 'cyan');
+    log('\nGitset About Generator', 'cyan');
     log('=========================', 'cyan');
 
     if (!execCommand('gh --version')) {
@@ -199,23 +173,21 @@ async function generateAbout(config) {
 
     log(`Repository: ${owner}/${name}`, 'reset');
 
-    log(`Repository: ${owner}/${name}`, 'reset');
-
-    log('\nChoose mode:', 'cyan');
-    log('1. AI Generate', 'reset');
-    log('2. Manual Entry', 'reset');
-    const mode = await askQuestion('> ');
+    const mode = await selectOption('What would you like to do?', [
+        { label: 'AI Generate', value: '1' },
+        { label: 'Manual Entry', value: '2' }
+    ]);
 
     let description = '';
     let topics = [];
 
-    if (mode.trim() === '1') {
+    if (mode === '1') {
         if (!config.gitset_key) {
             log('✗ Gitset Key is required for AI generation. Run `gitset init` to configure.', 'red');
             return;
         }
 
-        log('\n🧠 Analyzing repository...', 'yellow');
+        log('\n→ Analyzing repository...', 'yellow');
 
         // Gather context
         let readme = '';
@@ -226,7 +198,7 @@ async function generateAbout(config) {
 
         let userContext = '';
         if (!readme && !packageJson) {
-            log('\n⚠️  No README.md or package.json found.', 'yellow');
+            log('\n✗ No README.md or package.json found.', 'yellow');
             userContext = await askQuestion('Please provide a brief description of the project to help the AI:\n> ');
         }
 
@@ -252,33 +224,33 @@ async function generateAbout(config) {
             topics = data.topics || [];
 
             while (true) {
-                log('\n✨ AI Generated Content:', 'green');
+                log('\nAI Generated Content:', 'green');
                 log(`\nDescription:\n${description}`, 'reset');
                 log(`\nTopics:\n${topics.join(', ')}`, 'reset');
 
-                log('\nWhat would you like to do?', 'cyan');
-                log('1. Apply changes', 'reset');
-                log('2. Refine with AI', 'reset');
-                log('3. Edit manually', 'reset');
-                log('4. Cancel', 'reset');
-                const action = await askQuestion('> ');
+                const action = await selectOption('What would you like to do?', [
+                    { label: 'Apply changes', value: 'apply' },
+                    { label: 'Refine with AI', value: 'refine' },
+                    { label: 'Edit manually', value: 'edit' },
+                    { label: 'Cancel', value: 'cancel' }
+                ]);
 
-                if (action.trim() === '4') return;
+                if (action === 'cancel') return;
 
-                if (action.trim() === '1') {
+                if (action === 'apply') {
                     break; // Proceed to apply
                 }
 
-                if (action.trim() === '3') {
+                if (action === 'edit') {
                     description = await askQuestion(`Description (${description}): `) || description;
                     const topicsStr = await askQuestion(`Topics (${topics.join(', ')}): `);
                     if (topicsStr) topics = topicsStr.split(',').map(t => t.trim());
                     break; // Proceed to apply
                 }
 
-                if (action.trim() === '2') {
+                if (action === 'refine') {
                     const instruction = await askQuestion('\nRefinement instruction (e.g. "Make it shorter", "Add react tag"): ');
-                    log('\n🧠 Refining...', 'yellow');
+                    log('\n→ Refining...', 'yellow');
 
                     try {
                         const refineRes = await fetch('https://gitset-core-v2.vercel.app/api/about', {
@@ -314,7 +286,7 @@ async function generateAbout(config) {
             return;
         }
 
-    } else if (mode.trim() === '2') {
+    } else if (mode === '2') {
         description = await askQuestion('Description: ');
         const topicsStr = await askQuestion('Topics (comma separated): ');
         topics = topicsStr.split(',').map(t => t.trim()).filter(Boolean);
@@ -344,7 +316,7 @@ async function generateAbout(config) {
             log('✓ Topics updated', 'green');
         }
 
-        log('\n🎉 Repository updated successfully!', 'green');
+        log('\n✓ Repository updated successfully!', 'green');
 
     } catch (error) {
         log(`✗ Failed to update repository: ${error.message}`, 'red');

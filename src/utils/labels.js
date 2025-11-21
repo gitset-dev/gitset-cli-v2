@@ -1,3 +1,22 @@
+const { execSync } = require('child_process');
+const { log, askQuestion, selectOption } = require('./ui');
+
+function execCommand(cmd) {
+    try {
+        return execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+    } catch (err) {
+        return null;
+    }
+}
+
+function getExistingLabels() {
+    try {
+        const json = execCommand('gh label list --limit 100 --json name');
+        return json ? JSON.parse(json).map(l => l.name) : [];
+    } catch (e) {
+        return [];
+    }
+}
 
 async function manageLabelsInteractive(currentLabels) {
     while (true) {
@@ -131,3 +150,5 @@ async function manageLabelsInteractive(currentLabels) {
         }
     }
 }
+
+module.exports = { manageLabelsInteractive };
