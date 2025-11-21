@@ -199,12 +199,17 @@ async function generateAbout(config) {
 
     log(`Repository: ${owner}/${name}`, 'reset');
 
-    const mode = await askQuestion('\nChoose mode:\n[A]I Generate\n[M]anual Entry\n> ');
+    log(`Repository: ${owner}/${name}`, 'reset');
+
+    log('\nChoose mode:', 'cyan');
+    log('1. AI Generate', 'reset');
+    log('2. Manual Entry', 'reset');
+    const mode = await askQuestion('> ');
 
     let description = '';
     let topics = [];
 
-    if (mode.toLowerCase() === 'a') {
+    if (mode.trim() === '1') {
         if (!config.gitset_key) {
             log('✗ Gitset Key is required for AI generation. Run `gitset init` to configure.', 'red');
             return;
@@ -250,9 +255,14 @@ async function generateAbout(config) {
             log(`\nDescription:\n${description}`, 'reset');
             log(`\nTopics:\n${topics.join(', ')}`, 'reset');
 
-            const action = await askQuestion('\n[A]pply  [E]dit  [C]ancel\n> ');
-            if (action.toLowerCase() === 'c') return;
-            if (action.toLowerCase() === 'e') {
+            log('\nWhat would you like to do?', 'cyan');
+            log('1. Apply changes', 'reset');
+            log('2. Edit manually', 'reset');
+            log('3. Cancel', 'reset');
+            const action = await askQuestion('> ');
+
+            if (action.trim() === '3') return;
+            if (action.trim() === '2') {
                 description = await askQuestion(`Description (${description}): `) || description;
                 const topicsStr = await askQuestion(`Topics (${topics.join(', ')}): `);
                 if (topicsStr) topics = topicsStr.split(',').map(t => t.trim());
@@ -263,11 +273,12 @@ async function generateAbout(config) {
             return;
         }
 
-    } else if (mode.toLowerCase() === 'm') {
+    } else if (mode.trim() === '2') {
         description = await askQuestion('Description: ');
         const topicsStr = await askQuestion('Topics (comma separated): ');
         topics = topicsStr.split(',').map(t => t.trim()).filter(Boolean);
     } else {
+        log('Invalid option.', 'red');
         return;
     }
 
