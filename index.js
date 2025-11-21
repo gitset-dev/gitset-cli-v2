@@ -1057,7 +1057,7 @@ npm start
 # My Custom GitHub Labels
 
 This file defines the custom labels to be applied to your GitHub repositories using \`gitset repo --labelspack\`.
-Edit the YAML block below to define your labels. Once customized, change \`gitset-labels-customized: false\` to \`true\`.
+Edit the YAML block below to define your labels. Once customized, (PLEASE READ THE FIRST LINE OF THIS DOCUMENT) change \`gitset-labels-customized: false\` to \`true\`.
 
 ---
 
