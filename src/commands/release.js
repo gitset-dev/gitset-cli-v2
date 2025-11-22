@@ -6,7 +6,7 @@ const { log, askQuestion, selectOption } = require('../utils/ui');
 
 function execCommand(cmd) {
     try {
-        return execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+        return execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 1024 * 1024 * 10 }).trim();
     } catch (err) {
         return null;
     }
