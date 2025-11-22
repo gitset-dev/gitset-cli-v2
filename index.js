@@ -63,7 +63,7 @@ async function authenticate() {
       log('\n→ Validating with server...', 'cyan');
 
       try {
-        const response = await fetch(`${BACKEND_URL}/validate`, {
+        const response = await fetch('https://gitset-core-v2.vercel.app/api/validate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ gitset_key: key.trim() })
