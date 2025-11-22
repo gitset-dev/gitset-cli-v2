@@ -14,7 +14,7 @@ const TEMPLATE_FILE = path.join(CONFIG_DIR, 'COMMIT-MSG-TEMPLATE.md');
 
 function execCommand(cmd) {
   try {
-    return execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+    return execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 1024 * 1024 * 10 }).trim();
   } catch (err) {
     return null;
   }
@@ -1858,6 +1858,9 @@ async function commandIssue(options = {}) {
       const assigneeArg = selectedAssignees.length > 0 ? `-a "${selectedAssignees.join(',')}"` : '';
 
       const cmd = `gh issue create -t "${currentTitle}" -F "${tmpFile}" ${labelArgs} ${milestoneArg} ${assigneeArg}`;
+
+      log(`\n→ Debug: Issue Body Length: ${currentBody.length} chars`, 'pink');
+      log(`→ Debug: Command length: ${cmd.length} chars`, 'pink');
 
       try {
         const url = execCommand(cmd);
