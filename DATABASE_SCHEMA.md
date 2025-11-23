@@ -1,12 +1,12 @@
 # Database Analysis: gitset
 
-**Generated:** 22/11/2025, 12:49:08
+**Generated:** 23/11/2025, 05:31:22
 
 ## Statistics
 
-- **Total Tables:** 17
-- **Total Rows:** 497
-- **Total Indexes:** 23
+- **Total Tables:** 21
+- **Total Rows:** 558
+- **Total Indexes:** 27
 - **Total Triggers:** 0
 
 ---
@@ -25,6 +25,18 @@
 | user_email | TEXT | ✓ | - | ✗ |
 | repo_context | TEXT | ✗ | - | ✗ |
 | created_at | DATETIME | ✗ | CURRENT_TIMESTAMP | ✗ |
+| updated_at | DATETIME | ✗ | CURRENT_TIMESTAMP | ✗ |
+
+### commit_settings
+
+**Row Count:** 0
+
+#### Columns
+
+| Name | Type | Not Null | Default | Primary Key |
+|------|------|----------|---------|-------------|
+| user_email | TEXT | ✗ | - | ✓ |
+| default_template | TEXT | ✗ | - | ✗ |
 | updated_at | DATETIME | ✗ | CURRENT_TIMESTAMP | ✗ |
 
 ### commit_versions
@@ -120,7 +132,7 @@
 
 ### issue_drafts
 
-**Row Count:** 17
+**Row Count:** 25
 
 #### Columns
 
@@ -132,9 +144,21 @@
 | created_at | DATETIME | ✗ | CURRENT_TIMESTAMP | ✗ |
 | updated_at | DATETIME | ✗ | CURRENT_TIMESTAMP | ✗ |
 
+### issue_settings
+
+**Row Count:** 1
+
+#### Columns
+
+| Name | Type | Not Null | Default | Primary Key |
+|------|------|----------|---------|-------------|
+| user_email | TEXT | ✗ | - | ✓ |
+| default_template | TEXT | ✗ | - | ✗ |
+| updated_at | DATETIME | ✗ | CURRENT_TIMESTAMP | ✗ |
+
 ### issue_versions
 
-**Row Count:** 52
+**Row Count:** 68
 
 #### Columns
 
@@ -180,7 +204,7 @@
 
 ### message_usage
 
-**Row Count:** 2
+**Row Count:** 34
 
 #### Columns
 
@@ -212,6 +236,18 @@
 | created_at | DATETIME | ✗ | CURRENT_TIMESTAMP | ✗ |
 | updated_at | DATETIME | ✗ | CURRENT_TIMESTAMP | ✗ |
 
+### pr_settings
+
+**Row Count:** 0
+
+#### Columns
+
+| Name | Type | Not Null | Default | Primary Key |
+|------|------|----------|---------|-------------|
+| user_email | TEXT | ✗ | - | ✓ |
+| default_template | TEXT | ✗ | - | ✗ |
+| updated_at | DATETIME | ✗ | CURRENT_TIMESTAMP | ✗ |
+
 ### pr_versions
 
 **Row Count:** 16
@@ -235,7 +271,7 @@
 
 ### readme_drafts
 
-**Row Count:** 12
+**Row Count:** 13
 
 #### Columns
 
@@ -248,9 +284,21 @@
 | created_at | DATETIME | ✗ | CURRENT_TIMESTAMP | ✗ |
 | updated_at | DATETIME | ✗ | CURRENT_TIMESTAMP | ✗ |
 
+### readme_settings
+
+**Row Count:** 0
+
+#### Columns
+
+| Name | Type | Not Null | Default | Primary Key |
+|------|------|----------|---------|-------------|
+| user_email | TEXT | ✗ | - | ✓ |
+| default_template | TEXT | ✗ | - | ✗ |
+| updated_at | DATETIME | ✗ | CURRENT_TIMESTAMP | ✗ |
+
 ### readme_versions
 
-**Row Count:** 19
+**Row Count:** 22
 
 #### Columns
 
@@ -388,6 +436,17 @@ CREATE INDEX idx_category ON gitignore_templates(category)
 CREATE INDEX idx_category_name ON gitignore_templates(category, name)
 ```
 
+### idx_commit_settings_user
+
+**Table:** commit_settings
+
+**Columns:** user_email
+
+**SQL:**
+```sql
+CREATE INDEX idx_commit_settings_user ON commit_settings(user_email)
+```
+
 ### idx_commit_versions_draft
 
 **Table:** commit_versions
@@ -487,6 +546,17 @@ CREATE INDEX idx_debug_user_tool ON debug(user_email, tool_name, created_at DESC
 CREATE INDEX idx_gitset_key ON credentials(gitset_key)
 ```
 
+### idx_issue_settings_user
+
+**Table:** issue_settings
+
+**Columns:** user_email
+
+**SQL:**
+```sql
+CREATE INDEX idx_issue_settings_user ON issue_settings(user_email)
+```
+
 ### idx_issue_versions_draft
 
 **Table:** issue_versions
@@ -520,6 +590,17 @@ CREATE INDEX idx_message_usage_date ON message_usage(user_email, created_at)
 CREATE INDEX idx_name ON gitignore_templates(name)
 ```
 
+### idx_pr_settings_user
+
+**Table:** pr_settings
+
+**Columns:** user_email
+
+**SQL:**
+```sql
+CREATE INDEX idx_pr_settings_user ON pr_settings(user_email)
+```
+
 ### idx_pr_versions_draft
 
 **Table:** pr_versions
@@ -529,6 +610,17 @@ CREATE INDEX idx_name ON gitignore_templates(name)
 **SQL:**
 ```sql
 CREATE INDEX idx_pr_versions_draft ON pr_versions(draft_id)
+```
+
+### idx_readme_settings_user
+
+**Table:** readme_settings
+
+**Columns:** user_email
+
+**SQL:**
+```sql
+CREATE INDEX idx_readme_settings_user ON readme_settings(user_email)
 ```
 
 ### idx_readme_versions_draft
