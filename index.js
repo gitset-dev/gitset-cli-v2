@@ -605,6 +605,30 @@ function shouldExcludeItem(itemName, itemPath, excludePatterns, isDirectory) {
   return false;
 }
 
+function scanFiles(dir = '.', excludePatterns = []) {
+  let results = [];
+  const list = fs.readdirSync(dir);
+
+  for (const file of list) {
+    if (file.startsWith('.') && file !== '.gitignore') continue;
+
+    const filePath = path.join(dir, file);
+    const stat = fs.statSync(filePath);
+    const isDirectory = stat.isDirectory();
+    const relativePath = path.relative(process.cwd(), filePath);
+
+    if (shouldExcludeItem(file, relativePath, excludePatterns, isDirectory)) continue;
+
+    if (isDirectory) {
+      if (file === 'node_modules' || file === '.git') continue;
+      results = results.concat(scanFiles(filePath, excludePatterns));
+    } else {
+      results.push(relativePath);
+    }
+  }
+  return results;
+}
+
 function commandTree(dir = '.', prefix = '', options = {}) {
   const {
     maxDepth = 999,
@@ -2035,8 +2059,8 @@ async function commandReadme(options = {}) {
 
   log('\n=== Gitset README Generator ===', 'blue');
 
-  // 1. Analyze Repo
-  log('→ Analyzing repository...', 'yellow');
+  // 1. Analyze Repo (Local Metadata)
+  log('→ Analyzing repository metadata...', 'yellow');
   const analysis = analyzeRepo(process.cwd());
   log(`✓ Detected: ${analysis.language} (${analysis.packageManager})`, 'green');
   if (analysis.frameworks.length) log(`  Frameworks: ${analysis.frameworks.join(', ')}`, 'green');
@@ -2060,27 +2084,63 @@ async function commandReadme(options = {}) {
     }
   }
 
-  // 3. Generate Content
+  // 3. Smart Context Analysis (RAG-lite)
+  log('\n→ Scanning files for Smart Context...', 'yellow');
+  const gitignorePatterns = parseGitignore();
+  const allFiles = scanFiles('.', gitignorePatterns);
+
+  let fileContext = null;
+  try {
+    // Call API to identify key files
+    const aboutRes = await fetch(`${BACKEND_URL.replace('/commit', '/about')}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'analyze_files',
+        gitset_key: gitsetKey,
+        file_list: allFiles
+      })
+    });
+
+    if (aboutRes.ok) {
+      const aboutData = await aboutRes.json();
+      const keyFiles = aboutData.key_files || [];
+      log(`✓ AI identified ${keyFiles.length} key files for deep context.`, 'green');
+
+      // Read content of key files
+      let contextString = "";
+      const filesToRead = new Set([...keyFiles, 'README.md', 'package.json']);
+
+      for (const file of filesToRead) {
+        if (fs.existsSync(file) && fs.statSync(file).isFile()) {
+          const content = fs.readFileSync(file, 'utf8');
+          // Truncate if too large
+          const truncated = content.length > 8000 ? content.substring(0, 8000) + "\n...(truncated)" : content;
+          contextString += `\n\n--- FILE: ${file} ---\n${truncated}`;
+        }
+      }
+      fileContext = { userContext: contextString };
+    }
+  } catch (e) {
+    log(`⚠️ Smart Context failed: ${e.message}. Proceeding with basic analysis.`, 'yellow');
+  }
+
+  // 4. Generate Content
   let customTemplate = null;
   if (options.custom) {
     customTemplate = loadReadmeTemplate();
     if (customTemplate) log('✓ Using custom README template', 'pink');
   }
 
-  // Get Repo Info for Deep Wiki
+  // Get Repo Info for fallback (though we prefer local context now)
   let repoInfo = null;
   try {
     const remoteUrl = require('child_process').execSync('git remote get-url origin', { encoding: 'utf8' }).trim();
-    // Parse owner/repo from URL (supports https and ssh)
-    // https://github.com/owner/repo.git or git@github.com:owner/repo.git
     const match = remoteUrl.match(/[:/]([\w-]+)\/([\w-]+)(\.git)?$/);
     if (match) {
       repoInfo = { owner: match[1], name: match[2] };
-      log(`→ Detected Remote: ${repoInfo.owner}/${repoInfo.name}`, 'cyan');
     }
-  } catch (e) {
-    // Ignore if no remote
-  }
+  } catch (e) { }
 
   log('\n→ Generating README with AI...', 'yellow');
 
@@ -2090,7 +2150,8 @@ async function commandReadme(options = {}) {
       action: 'generate',
       analysis,
       custom_template: customTemplate,
-      repo_info: repoInfo
+      repo_info: repoInfo,
+      file_context: fileContext
     });
   } catch (error) {
     log(`✗ Error: ${error.message}`, 'red');
