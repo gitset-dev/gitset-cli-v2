@@ -2115,7 +2115,7 @@ async function commandReadme(options = {}) {
         if (fs.existsSync(file) && fs.statSync(file).isFile()) {
           const content = fs.readFileSync(file, 'utf8');
           // Truncate if too large
-          const truncated = content.length > 8000 ? content.substring(0, 8000) + "\n...(truncated)" : content;
+          const truncated = content.length > 20000 ? content.substring(0, 20000) + "\n...(truncated)" : content;
           contextString += `\n\n--- FILE: ${file} ---\n${truncated}`;
         }
       }
