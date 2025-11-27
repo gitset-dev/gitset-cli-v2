@@ -1808,8 +1808,8 @@ async function commandIssue(options = {}) {
     log(`\nBODY PREVIEW:\n${currentBody.substring(0, 300)}...\n(Full body hidden for brevity)`, 'reset');
 
     const action = await selectOption('What would you like to do?', [
-      { label: 'View Full Body', value: 'view_full' },
       { label: 'Confirm & Create Issue', value: 'create' },
+      { label: 'View Full Description', value: 'view_full' },
       { label: 'Edit/Refine Title', value: 'title' },
       { label: 'Edit/Refine Description', value: 'body' },
       { label: 'Manage Labels', value: 'labels' },
