@@ -1521,6 +1521,7 @@ async function commandPR(options = {}) {
 
     const action = await selectOption('What would you like to do?', [
       { label: 'Confirm & Create PR', value: 'create' },
+      { label: 'View Full Description', value: 'view_full' },
       { label: 'View Full PR Content', value: 'preview' },
       { label: 'Edit/Refine Title', value: 'title' },
       { label: 'Edit/Refine Description', value: 'body' },
@@ -1536,6 +1537,13 @@ async function commandPR(options = {}) {
     if (action === 'cancel') {
       log('Cancelled.', 'yellow');
       break;
+    }
+
+    if (action === 'view_full') {
+      console.log('\n' + '-'.repeat(50));
+      console.log(currentBody);
+      console.log('-'.repeat(50) + '\n');
+      await askQuestion('Press Enter to continue...');
     }
 
     if (action === 'preview') {
@@ -1800,6 +1808,7 @@ async function commandIssue(options = {}) {
     log(`\nBODY PREVIEW:\n${currentBody.substring(0, 300)}...\n(Full body hidden for brevity)`, 'reset');
 
     const action = await selectOption('What would you like to do?', [
+      { label: 'View Full Body', value: 'view_full' },
       { label: 'Confirm & Create Issue', value: 'create' },
       { label: 'Edit/Refine Title', value: 'title' },
       { label: 'Edit/Refine Description', value: 'body' },
@@ -1813,6 +1822,13 @@ async function commandIssue(options = {}) {
     if (action === 'cancel') {
       log('Cancelled.', 'yellow');
       break;
+    }
+
+    if (action === 'view_full') {
+      console.log('\n' + '-'.repeat(50));
+      console.log(currentBody);
+      console.log('-'.repeat(50) + '\n');
+      await askQuestion('Press Enter to continue...');
     }
 
     if (action === 'save') {
