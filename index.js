@@ -1476,6 +1476,30 @@ async function commandPR(options = {}) {
   const description = await askQuestion('Describe the PR (briefly): ');
   if (!description) return;
 
+  // 4. Issue Linking
+  let linkedIssue = null;
+  const issueMatch = currentBranch.match(/(?:^|\/|[a-zA-Z]+-)(\d+)(?:-|$)/);
+  if (issueMatch) {
+    const detectedIssue = issueMatch[1];
+    log(`\n→ Detected Issue Number: #${detectedIssue}`, 'cyan');
+    const confirmIssue = await selectOption('Link this issue?', [
+      { label: `Yes (Link #${detectedIssue})`, value: 'yes' },
+      { label: 'No (Don\'t link)', value: 'no' },
+      { label: 'Edit (Enter manually)', value: 'edit' }
+    ]);
+
+    if (confirmIssue === 'yes') {
+      linkedIssue = detectedIssue;
+    } else if (confirmIssue === 'edit') {
+      linkedIssue = await askQuestion('Enter Issue Number: ');
+    }
+  } else {
+    const linkManual = await askQuestion('\nLink an issue? (Enter number or leave empty): ');
+    if (linkManual.trim()) {
+      linkedIssue = linkManual.trim();
+    }
+  }
+
   let customTemplate = null;
   if (options.custom) {
     customTemplate = loadPRTemplate();
@@ -1491,7 +1515,8 @@ async function commandPR(options = {}) {
       description,
       diff,
       repoContext: getRepoUrl(),
-      custom_template: customTemplate
+      custom_template: customTemplate,
+      linkedIssue
     });
   } catch (error) {
     log(`✗ Error: ${error.message}`, 'red');
@@ -1702,8 +1727,12 @@ async function commandPR(options = {}) {
                 { label: 'Squash and Merge', value: '--squash' },
                 { label: 'Rebase and Merge', value: '--rebase' }
               ]);
+
+              const deleteBranch = await askQuestion('Delete branch after merge? (y/n): ');
+              const deleteFlag = deleteBranch.toLowerCase() === 'y' ? '--delete-branch' : '';
+
               try {
-                execCommand(`gh pr merge "${url}" ${method} --delete-branch`);
+                execCommand(`gh pr merge "${url}" ${method} ${deleteFlag}`);
                 log('✓ PR Merged!', 'green');
                 break;
               } catch (e) {
