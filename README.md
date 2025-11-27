@@ -2,6 +2,8 @@
 
 ![License](https://img.shields.io/badge/license-MPL_2.0-blue)
 
+# example
+
 Gitset is a powerful Command-Line Interface (CLI) tool designed to streamline your development workflow by generating intelligent and well-structured commit messages. Leveraging AI capabilities through a backend service, Gitset helps maintain clean and consistent commit history, authenticate users, and provides a suite of utility commands for common repository tasks such as generating `.gitignore` files, managing releases, and resolving Dependabot alerts.
 
 ## Features
