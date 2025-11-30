@@ -77,111 +77,7 @@ function parseLabelsYaml(content) {
     return labels;
 }
 
-async function applyLabelPack(config) {
-    log('\n=== Label Pack Manager ===', 'blue');
-
-    // Sync Logic
-    let content = '';
-    if (config.gitset_key) {
-        log('→ Checking cloud settings...', 'cyan');
-        const settings = await callApi('get_settings', {}, config.gitset_key);
-
-        if (settings && settings.labels_template) {
-            const useCloud = await askQuestion('Found a Label Pack in your cloud settings. Use it? (y/n): ');
-            if (useCloud.toLowerCase() === 'y') {
-                content = settings.labels_template;
-                // Update local file
-                if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
-                fs.writeFileSync(LABELS_FILE, content, 'utf8');
-                log('✓ Local labels.md updated from cloud', 'green');
-            }
-        }
-    }
-
-    if (!content && fs.existsSync(LABELS_FILE)) {
-        content = fs.readFileSync(LABELS_FILE, 'utf8');
-    }
-
-    if (!content) {
-        log('✗ No label pack found.', 'red');
-        log('  Run `gitset init` to generate the template or configure it in the Web Dashboard.', 'yellow');
-        return;
-    }
-
-    // Check for customization flag
-    if (content.includes('<!-- gitset-labels-customized: false -->')) {
-        log('✗ Label pack has not been customized.', 'yellow');
-        log('  Please edit ~/.gitset/labels.md and set gitset-labels-customized to true.', 'yellow');
-        return;
-    }
-
-    // Extract YAML block
-    const yamlMatch = content.match(/```yaml([\s\S]*?)```/);
-    if (!yamlMatch) {
-        log('✗ Could not find YAML block in labels.md', 'red');
-        return;
-    }
-
-    const yamlContent = yamlMatch[1];
-    const labels = parseLabelsYaml(yamlContent);
-
-    if (labels.length === 0) {
-        log('✗ No labels found in the definition.', 'yellow');
-        return;
-    }
-
-    log(`\nFound ${labels.length} labels to apply.`, 'cyan');
-
-    // Verify gh CLI
-    if (!execCommand('gh --version')) {
-        log('✗ GitHub CLI (gh) is not installed.', 'red');
-        return;
-    }
-
-    const confirm = await askQuestion('Apply these labels to the current repository? (y/n): ');
-    if (confirm.toLowerCase() !== 'y') return;
-
-    // Get existing labels
-    const existingLabelsJson = execCommand('gh label list --limit 100 --json name');
-    const existingLabels = existingLabelsJson ? JSON.parse(existingLabelsJson).map(l => l.name) : [];
-
-    for (const label of labels) {
-        const name = label.name;
-        const color = label.color || getRandomColor();
-        const description = label.description || '';
-
-        const safeName = name.replace(/"/g, '\\"');
-        const safeDesc = description.replace(/"/g, '\\"');
-        const safeColor = color.replace('#', '');
-
-        if (existingLabels.includes(name)) {
-            log(`→ Updating label: ${name}`, 'blue');
-            try {
-                execCommand(`gh label edit "${safeName}" --color "${safeColor}" --description "${safeDesc}"`);
-            } catch (e) {
-                log(`  ✗ Failed to update ${name}`, 'red');
-            }
-        } else {
-            log(`✓ Creating label: ${name}`, 'green');
-            try {
-                execCommand(`gh label create "${safeName}" --color "${safeColor}" --description "${safeDesc}"`);
-            } catch (e) {
-                log(`  ✗ Failed to create ${name}`, 'red');
-            }
-        }
-    }
-
-    log('\n✓ Label pack applied successfully!', 'green');
-
-    // Upload to cloud if changed locally and not synced
-    if (config.gitset_key) {
-        const sync = await askQuestion('Upload this Label Pack to your cloud settings? (y/n): ');
-        if (sync.toLowerCase() === 'y') {
-            await callApi('update_labels', { content }, config.gitset_key);
-            log('✓ Cloud settings updated', 'green');
-        }
-    }
-}
+// applyLabelPack removed - moved to src/commands/labels.js
 
 // --- About Logic ---
 
@@ -578,7 +474,9 @@ async function handleBackup(config) {
 
 async function commandRepo(config, args) {
     if (args.includes('--labelspack')) {
-        await applyLabelPack(config);
+        log('ℹ The --labelspack command has moved to `gitset labels apply`. Redirecting...', 'yellow');
+        const commandLabels = require('./labels');
+        await commandLabels(config, ['apply']);
     } else if (args.includes('--about')) {
         await generateAbout(config);
     } else if (args.includes('--backup')) {
@@ -587,13 +485,17 @@ async function commandRepo(config, args) {
         // Main Menu
         log('\n=== Gitset Repository Tools ===', 'blue');
         const choice = await selectOption('Select a tool:', [
-            { label: 'Label Pack Manager (Sync & Apply)', value: 'labels' },
+            { label: 'Label Pack Manager (Moved to `gitset labels`)', value: 'labels' },
             { label: 'About Generator (Description & Topics)', value: 'about' },
             { label: 'Backup Manager (Forks & Sync)', value: 'backup' },
             { label: 'Exit', value: 'exit' }
         ]);
 
-        if (choice === 'labels') await applyLabelPack(config);
+        if (choice === 'labels') {
+            log('ℹ Redirecting to `gitset labels apply`...', 'yellow');
+            const commandLabels = require('./labels');
+            await commandLabels(config, ['apply']);
+        }
         if (choice === 'about') await generateAbout(config);
         if (choice === 'backup') await handleBackup(config);
     }

@@ -839,7 +839,7 @@ function showHelp() {
   log('  gitset release            Manage Tags & Releases', 'green');
   log('  gitset readme             Generate/Update README', 'green');
   log('  gitset dependabot         Analyze and resolve Dependabot alerts', 'green');
-  log('  gitset repo --labelspack  Apply custom label pack to repository', 'green');
+  log('  gitset labels             Manage centralized labels (list/add/apply)', 'green');
 
   log('\nTEMPLATE MANAGEMENT:', 'pink');
   log('  gitset template --sync    Create/update commit message template', 'green');
@@ -899,15 +899,7 @@ function getRepoUrl() {
   return execCommand('git config --get remote.origin.url');
 }
 
-function getExistingLabels() {
-  try {
-    const output = execCommand('gh label list --limit 100 --json name');
-    if (!output) return [];
-    return JSON.parse(output).map(l => l.name);
-  } catch {
-    return [];
-  }
-}
+// getExistingLabels removed - imported from src/utils/labels.js
 
 // --- Init Command ---
 
@@ -1302,138 +1294,13 @@ function getReviewers() {
   }
 }
 
-async function manageLabelsInteractive(currentLabels) {
-  while (true) {
-    console.clear();
-    log('=== Label Management ===', 'blue');
-    log(`Selected Labels: ${currentLabels.map(l => l.name || l).join(', ') || 'None'}`, 'pink');
+const { manageLabelsInteractive, getLabels, addLabel, updateLabel, deleteLabel } = require('./src/utils/labels');
 
-    const action = await selectOption('Choose action:', [
-      { label: 'Add/Select Existing Label', value: 'add' },
-      { label: 'Create New Label', value: 'create' },
-      { label: 'Remove Label from Selection', value: 'remove' },
-      { label: 'Edit Existing Label', value: 'edit' },
-      { label: 'Delete Label from Repo', value: 'delete' },
-      { label: 'Done', value: 'done' }
-    ]);
+// ... (previous code)
 
-    if (action === 'done') return currentLabels;
+// commandLabels removed - moved to src/commands/labels.js
 
-    if (action === 'add') {
-      const existing = getExistingLabels();
-      if (existing.length === 0) {
-        log('No existing labels found.', 'yellow');
-        await new Promise(r => setTimeout(r, 1000));
-      } else {
-        log('\nAvailable Labels:', 'cyan');
-        existing.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
-        const sel = await askQuestion('Select labels (numbers, comma sep): ');
-        const indices = sel.split(',').map(s => parseInt(s.trim()) - 1);
-        const selected = indices.map(i => existing[i]).filter(l => l);
-
-        selected.forEach(l => {
-          if (!currentLabels.some(cl => (cl.name || cl) === l)) {
-            currentLabels.push({ name: l });
-          }
-        });
-      }
-    }
-
-    if (action === 'create') {
-      const name = await askQuestion('Label name: ');
-      if (name) {
-        const color = await askQuestion('Color (hex, e.g. FF0000): ');
-        const desc = await askQuestion('Description: ');
-        try {
-          execCommand(`gh label create "${name}" --color "${color}" --description "${desc}"`);
-          log(`✓ Created label ${name}`, 'green');
-          currentLabels.push({ name, color, description: desc });
-        } catch (e) {
-          log(`✗ Failed to create label: ${e.message}`, 'red');
-        }
-        await new Promise(r => setTimeout(r, 1000));
-      }
-    }
-
-    if (action === 'remove') {
-      if (currentLabels.length === 0) {
-        log('No labels selected.', 'yellow');
-        await new Promise(r => setTimeout(r, 1000));
-      } else {
-        log('\nSelected Labels:', 'cyan');
-        currentLabels.forEach((l, i) => log(`${i + 1}. ${l.name || l}`, 'reset'));
-        const sel = await askQuestion('Select label to remove (number): ');
-        const idx = parseInt(sel) - 1;
-        if (idx >= 0 && idx < currentLabels.length) {
-          currentLabels.splice(idx, 1);
-        }
-      }
-    }
-
-    if (action === 'edit') {
-      const existing = getExistingLabels();
-      if (existing.length === 0) {
-        log('No labels to edit.', 'yellow');
-        await new Promise(r => setTimeout(r, 1000));
-      } else {
-        log('\nSelect Label to Edit:', 'cyan');
-        existing.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
-        const sel = await askQuestion('Number: ');
-        const idx = parseInt(sel) - 1;
-        if (idx >= 0 && idx < existing.length) {
-          const oldName = existing[idx];
-          const newName = await askQuestion(`New name [${oldName}]: `);
-          const newColor = await askQuestion('New color: ');
-          const newDesc = await askQuestion('New description: ');
-
-          const args = [];
-          if (newName) args.push(`--name "${newName}"`);
-          if (newColor) args.push(`--color "${newColor}"`);
-          if (newDesc) args.push(`--description "${newDesc}"`);
-
-          if (args.length > 0) {
-            try {
-              execCommand(`gh label edit "${oldName}" ${args.join(' ')}`);
-              log('✓ Label updated', 'green');
-            } catch (e) {
-              log(`✗ Failed to update label: ${e.message}`, 'red');
-            }
-            await new Promise(r => setTimeout(r, 1000));
-          }
-        }
-      }
-    }
-
-    if (action === 'delete') {
-      const existing = getExistingLabels();
-      if (existing.length === 0) {
-        log('No labels to delete.', 'yellow');
-        await new Promise(r => setTimeout(r, 1000));
-      } else {
-        log('\nSelect Label to DELETE (Irreversible):', 'red');
-        existing.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
-        const sel = await askQuestion('Number: ');
-        const idx = parseInt(sel) - 1;
-        if (idx >= 0 && idx < existing.length) {
-          const name = existing[idx];
-          const confirm = await askQuestion(`Are you sure you want to delete "${name}"? (y/n): `);
-          if (confirm.toLowerCase() === 'y') {
-            try {
-              execCommand(`gh label delete "${name}" --yes`);
-              log('✓ Label deleted', 'green');
-              // Remove from current if present
-              const currentIdx = currentLabels.findIndex(l => (l.name || l) === name);
-              if (currentIdx !== -1) currentLabels.splice(currentIdx, 1);
-            } catch (e) {
-              log(`✗ Failed to delete label: ${e.message}`, 'red');
-            }
-            await new Promise(r => setTimeout(r, 1000));
-          }
-        }
-      }
-    }
-  }
-}
+// ... (rest of the file)
 
 async function commandPR(options = {}) {
   if (!isGitRepo()) {
@@ -1903,15 +1770,40 @@ async function commandIssue(options = {}) {
       log('\n→ Creating issue on GitHub...', 'cyan');
 
       // Ensure labels exist
-      const existingLabels = getExistingLabels();
+      const { labels: existingLabelsObj } = await getLabels();
+      const existingLabelNames = existingLabelsObj.map(l => l.name);
+
       for (const label of currentLabels) {
         const labelName = label.name || label;
-        if (!existingLabels.includes(labelName)) {
+        if (!existingLabelNames.includes(labelName)) {
           log(`→ Creating label: ${labelName}`, 'yellow');
-          const color = label.color ? `--color "${label.color}"` : '';
-          const desc = label.description ? `--description "${label.description}"` : '';
+          const color = label.color || 'cccccc'; // Default color if missing
+          const desc = label.description || '';
+
           try {
-            execCommand(`gh label create "${labelName}" ${color} ${desc}`);
+            // Use addLabel from labels.js which handles local/remote
+            await addLabel({ name: labelName, color, description: desc });
+            // Also create on GitHub if we are in a repo context?
+            // The original code ran `gh label create`.
+            // If we are using local config, we might not want to create on GH automatically?
+            // But commandIssue creates an issue on GH, so labels MUST exist on GH.
+            // So we should probably still run `gh label create` for the repo.
+            // But `addLabel` adds to our centralized store (Turso/Local).
+            // We need to sync.
+
+            // Original behavior: create on GH.
+            // New behavior: Create on GH AND Centralized Store?
+            // The requirement is "CLI label modifications will update the local config... or push to Turso".
+            // But for `gh issue create` to work with labels, those labels must exist in the GH repo.
+            // So we MUST run `gh label create` as well.
+
+            const colorArg = label.color ? `--color "${label.color}"` : '';
+            const descArg = label.description ? `--description "${label.description}"` : '';
+            execCommand(`gh label create "${labelName}" ${colorArg} ${descArg}`);
+
+            // Also add to centralized store
+            await addLabel({ name: labelName, color: label.color || 'cccccc', description: desc });
+
           } catch (e) {
             log(`⚠️ Failed to create label ${labelName}: ${e.message}`, 'yellow');
           }
@@ -2410,6 +2302,13 @@ async function main() {
     case 'template':
       commandTemplate(args[1]);
       break;
+
+    case 'labels': {
+      const commandLabels = require('./src/commands/labels');
+      const config = loadConfig();
+      await commandLabels(config, args.slice(1));
+      break;
+    }
 
     case 'help':
     case undefined:

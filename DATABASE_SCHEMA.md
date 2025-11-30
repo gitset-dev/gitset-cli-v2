@@ -1,12 +1,12 @@
 # Database Analysis: gitset
 
-**Generated:** 23/11/2025, 05:31:22
+**Generated:** 30/11/2025, 12:53:09
 
 ## Statistics
 
-- **Total Tables:** 21
-- **Total Rows:** 558
-- **Total Indexes:** 27
+- **Total Tables:** 22
+- **Total Rows:** 1261
+- **Total Indexes:** 28
 - **Total Triggers:** 0
 
 ---
@@ -15,7 +15,7 @@
 
 ### commit_drafts
 
-**Row Count:** 15
+**Row Count:** 22
 
 #### Columns
 
@@ -41,7 +41,7 @@
 
 ### commit_versions
 
-**Row Count:** 20
+**Row Count:** 29
 
 #### Columns
 
@@ -79,7 +79,7 @@
 
 ### debug
 
-**Row Count:** 54
+**Row Count:** 64
 
 #### Columns
 
@@ -132,7 +132,7 @@
 
 ### issue_drafts
 
-**Row Count:** 25
+**Row Count:** 58
 
 #### Columns
 
@@ -158,7 +158,7 @@
 
 ### issue_versions
 
-**Row Count:** 68
+**Row Count:** 142
 
 #### Columns
 
@@ -179,7 +179,7 @@
 
 ### login_logs
 
-**Row Count:** 2
+**Row Count:** 5
 
 #### Columns
 
@@ -204,7 +204,7 @@
 
 ### message_usage
 
-**Row Count:** 34
+**Row Count:** 499
 
 #### Columns
 
@@ -222,7 +222,7 @@
 
 ### pr_drafts
 
-**Row Count:** 5
+**Row Count:** 25
 
 #### Columns
 
@@ -238,7 +238,7 @@
 
 ### pr_settings
 
-**Row Count:** 0
+**Row Count:** 1
 
 #### Columns
 
@@ -250,7 +250,7 @@
 
 ### pr_versions
 
-**Row Count:** 16
+**Row Count:** 61
 
 #### Columns
 
@@ -271,7 +271,7 @@
 
 ### readme_drafts
 
-**Row Count:** 13
+**Row Count:** 25
 
 #### Columns
 
@@ -286,7 +286,7 @@
 
 ### readme_settings
 
-**Row Count:** 0
+**Row Count:** 1
 
 #### Columns
 
@@ -298,7 +298,7 @@
 
 ### readme_versions
 
-**Row Count:** 22
+**Row Count:** 39
 
 #### Columns
 
@@ -319,7 +319,7 @@
 
 ### release_drafts
 
-**Row Count:** 4
+**Row Count:** 5
 
 #### Columns
 
@@ -351,7 +351,7 @@
 
 ### release_versions
 
-**Row Count:** 8
+**Row Count:** 9
 
 #### Columns
 
@@ -370,9 +370,23 @@
 |--------|------------------|-------------------|
 | draft_id | release_drafts | id |
 
+### repo_settings
+
+**Row Count:** 1
+
+#### Columns
+
+| Name | Type | Not Null | Default | Primary Key |
+|------|------|----------|---------|-------------|
+| user_email | TEXT | ✗ | - | ✓ |
+| labels_template | TEXT | ✗ | - | ✗ |
+| about_draft | TEXT | ✗ | - | ✗ |
+| backup_config | TEXT | ✗ | - | ✗ |
+| updated_at | DATETIME | ✗ | CURRENT_TIMESTAMP | ✗ |
+
 ### sessions
 
-**Row Count:** 2
+**Row Count:** 5
 
 #### Columns
 
@@ -654,6 +668,17 @@ CREATE INDEX idx_release_drafts_user ON release_drafts(user_email)
 **SQL:**
 ```sql
 CREATE INDEX idx_release_versions_draft ON release_versions(draft_id)
+```
+
+### idx_repo_settings_user
+
+**Table:** repo_settings
+
+**Columns:** user_email
+
+**SQL:**
+```sql
+CREATE INDEX idx_repo_settings_user ON repo_settings(user_email)
 ```
 
 ### idx_user_email
