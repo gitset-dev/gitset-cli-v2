@@ -839,7 +839,7 @@ function showHelp() {
   log('  gitset release            Manage Tags & Releases', 'green');
   log('  gitset readme             Generate/Update README', 'green');
   log('  gitset dependabot         Analyze and resolve Dependabot alerts', 'green');
-  log('  gitset labels             Manage centralized labels (list/add/apply)', 'green');
+  log('  gitset labelspack         Manage centralized labels (--list/--add/--apply)', 'green');
 
   log('\nTEMPLATE MANAGEMENT:', 'pink');
   log('  gitset template --sync    Create/update commit message template', 'green');
@@ -2303,10 +2303,10 @@ async function main() {
       commandTemplate(args[1]);
       break;
 
-    case 'labels': {
-      const commandLabels = require('./src/commands/labels');
+    case 'labelspack': {
+      const commandLabelspack = require('./src/commands/labelspack');
       const config = loadConfig();
-      await commandLabels(config, args.slice(1));
+      await commandLabelspack(config, args.slice(1));
       break;
     }
 

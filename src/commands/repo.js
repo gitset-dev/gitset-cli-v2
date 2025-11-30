@@ -474,9 +474,9 @@ async function handleBackup(config) {
 
 async function commandRepo(config, args) {
     if (args.includes('--labelspack')) {
-        log('ℹ The --labelspack command has moved to `gitset labels apply`. Redirecting...', 'yellow');
-        const commandLabels = require('./labels');
-        await commandLabels(config, ['apply']);
+        log('ℹ The --labelspack command has moved to `gitset labelspack --apply`. Redirecting...', 'yellow');
+        const commandLabelspack = require('./labelspack');
+        await commandLabelspack(config, ['--apply']);
     } else if (args.includes('--about')) {
         await generateAbout(config);
     } else if (args.includes('--backup')) {
@@ -485,16 +485,16 @@ async function commandRepo(config, args) {
         // Main Menu
         log('\n=== Gitset Repository Tools ===', 'blue');
         const choice = await selectOption('Select a tool:', [
-            { label: 'Label Pack Manager (Moved to `gitset labels`)', value: 'labels' },
+            { label: 'Label Pack Manager (Moved to `gitset labelspack`)', value: 'labels' },
             { label: 'About Generator (Description & Topics)', value: 'about' },
             { label: 'Backup Manager (Forks & Sync)', value: 'backup' },
             { label: 'Exit', value: 'exit' }
         ]);
 
         if (choice === 'labels') {
-            log('ℹ Redirecting to `gitset labels apply`...', 'yellow');
-            const commandLabels = require('./labels');
-            await commandLabels(config, ['apply']);
+            log('ℹ Redirecting to `gitset labelspack --apply`...', 'yellow');
+            const commandLabelspack = require('./labelspack');
+            await commandLabelspack(config, ['--apply']);
         }
         if (choice === 'about') await generateAbout(config);
         if (choice === 'backup') await handleBackup(config);

@@ -147,14 +147,17 @@ async function applyLabels(config) {
     }
 }
 
-async function commandLabels(config, args) {
-    const subCommand = args[0];
+async function commandLabelspack(config, args) {
+    // Parse flags
+    const isList = args.includes('--list');
+    const isAdd = args.includes('--add');
+    const isApply = args.includes('--apply') || args.includes('--sync');
 
-    if (!subCommand || subCommand === 'list') {
+    if (isList || (!isAdd && !isApply && args.length === 0)) {
         const { source, labels } = await getLabels();
-        log(`\n=== Labels (${source}) ===`, 'blue');
+        log(`\n=== Label Pack (${source}) ===`, 'blue');
         if (labels.length === 0) {
-            log('No labels found.', 'yellow');
+            log('No labels found in your pack.', 'yellow');
         } else {
             labels.forEach(l => {
                 log(`● ${l.name}`, 'cyan');
@@ -164,23 +167,23 @@ async function commandLabels(config, args) {
         return;
     }
 
-    if (subCommand === 'add') {
+    if (isAdd) {
         const name = await askQuestion('Label name: ');
         const color = await askQuestion('Color (hex): ');
         const description = await askQuestion('Description: ');
 
         const success = await addLabel({ name, color, description });
-        if (success) log('✓ Label added', 'green');
+        if (success) log('✓ Label added to pack', 'green');
         else log('✗ Failed to add label', 'red');
         return;
     }
 
-    if (subCommand === 'apply' || subCommand === 'sync') {
+    if (isApply) {
         await applyLabels(config);
         return;
     }
 
-    log('Usage: gitset labels [list|add|apply]', 'yellow');
+    log('Usage: gitset labelspack [--list | --add | --apply]', 'yellow');
 }
 
-module.exports = commandLabels;
+module.exports = commandLabelspack;
