@@ -80,31 +80,78 @@ async function getRemoteLabels() {
     }
 }
 
+const LABELS_FILE = path.join(CONFIG_DIR, 'labels.md');
+
+function parseLabelsYaml(content) {
+    const labels = [];
+    const lines = content.split('\n');
+    let currentLabel = null;
+
+    for (let line of lines) {
+        line = line.trim();
+        if (!line || line.startsWith('#')) continue;
+
+        if (line.startsWith('- name:')) {
+            if (currentLabel) labels.push(currentLabel);
+            currentLabel = { name: line.replace('- name:', '').trim() };
+        } else if (currentLabel) {
+            if (line.startsWith('color:')) {
+                let color = line.replace('color:', '').trim();
+                if ((color.startsWith('"') && color.endsWith('"')) || (color.startsWith("'") && color.endsWith("'"))) {
+                    color = color.slice(1, -1);
+                }
+                currentLabel.color = color;
+            } else if (line.startsWith('description:')) {
+                let desc = line.replace('description:', '').trim();
+                if ((desc.startsWith('"') && desc.endsWith('"')) || (desc.startsWith("'") && desc.endsWith("'"))) {
+                    desc = desc.slice(1, -1);
+                }
+                currentLabel.description = desc;
+            }
+        }
+    }
+    if (currentLabel) labels.push(currentLabel);
+    return labels;
+}
+
 async function getLabels() {
-    // 1. Local Config
+    // 1. Local labels.md (Priority 1)
+    if (fs.existsSync(LABELS_FILE)) {
+        const content = fs.readFileSync(LABELS_FILE, 'utf8');
+        const yamlMatch = content.match(/```yaml([\s\S]*?)```/);
+        if (yamlMatch) {
+            const labels = parseLabelsYaml(yamlMatch[1]);
+            if (labels.length > 0) {
+                return { source: 'local labels.md', labels };
+            }
+        }
+    }
+
+    // 2. Local Config (Priority 2 - Legacy/Backup)
     const localLabels = getLocalLabels();
     if (localLabels && Array.isArray(localLabels) && localLabels.length > 0) {
-        return { source: 'local', labels: localLabels };
+        return { source: 'local config', labels: localLabels };
     }
 
-    // 2. Remote API
+    // 3. Remote API (Priority 3)
     const remoteLabels = await getRemoteLabels();
     if (remoteLabels && remoteLabels.length > 0) {
-        return { source: 'remote', labels: remoteLabels };
+        return { source: 'cloud', labels: remoteLabels };
     }
 
-    // 3. Fallback to GitHub (existing behavior, optional but good for safety)
-    // Actually the requirement says "falling back to Turso DB". 
-    // If Turso is empty, maybe we shouldn't fallback to GitHub?
-    // But the CLI currently uses GitHub labels.
-    // Let's keep GitHub as a last resort or just return empty.
     return { source: 'none', labels: [] };
 }
 
 async function addLabel(label) {
     const { source } = await getLabels();
 
-    if (source === 'local' || source === 'none') {
+    if (source === 'local labels.md') {
+        log('ℹ You are using a local labels.md file.', 'blue');
+        log(`  Please edit ${LABELS_FILE} directly to add labels.`, 'yellow');
+        return false;
+    }
+
+    if (source === 'local config' || source === 'none') {
         // Update local config
         const config = loadConfig() || {};
         const labels = config.labels || [];
@@ -134,10 +181,16 @@ async function addLabel(label) {
 async function updateLabel(id, label) {
     const { source } = await getLabels();
 
-    if (source === 'local') {
+    if (source === 'local labels.md') {
+        log('ℹ You are using a local labels.md file.', 'blue');
+        log(`  Please edit ${LABELS_FILE} directly to update labels.`, 'yellow');
+        return false;
+    }
+
+    if (source === 'local config') {
         const config = loadConfig();
         const labels = config.labels || [];
-        const index = labels.findIndex(l => l.name === id || l.id === id); // id might be name for local
+        const index = labels.findIndex(l => l.name === id || l.id === id);
         if (index !== -1) {
             labels[index] = { ...labels[index], ...label };
             config.labels = labels;
@@ -166,7 +219,13 @@ async function updateLabel(id, label) {
 async function deleteLabel(id) {
     const { source } = await getLabels();
 
-    if (source === 'local') {
+    if (source === 'local labels.md') {
+        log('ℹ You are using a local labels.md file.', 'blue');
+        log(`  Please edit ${LABELS_FILE} directly to delete labels.`, 'yellow');
+        return false;
+    }
+
+    if (source === 'local config') {
         const config = loadConfig();
         const labels = config.labels || [];
         const newLabels = labels.filter(l => l.name !== id && l.id !== id);

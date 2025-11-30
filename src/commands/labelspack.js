@@ -25,79 +25,25 @@ function getRandomColor() {
     return color;
 }
 
-function parseLabelsYaml(content) {
-    const labels = [];
-    const lines = content.split('\n');
-    let currentLabel = null;
-
-    for (let line of lines) {
-        line = line.trim();
-        if (!line || line.startsWith('#')) continue;
-
-        if (line.startsWith('- name:')) {
-            if (currentLabel) labels.push(currentLabel);
-            currentLabel = { name: line.replace('- name:', '').trim() };
-        } else if (currentLabel) {
-            if (line.startsWith('color:')) {
-                let color = line.replace('color:', '').trim();
-                if ((color.startsWith('"') && color.endsWith('"')) || (color.startsWith("'") && color.endsWith("'"))) {
-                    color = color.slice(1, -1);
-                }
-                currentLabel.color = color;
-            } else if (line.startsWith('description:')) {
-                let desc = line.replace('description:', '').trim();
-                if ((desc.startsWith('"') && desc.endsWith('"')) || (desc.startsWith("'") && desc.endsWith("'"))) {
-                    desc = desc.slice(1, -1);
-                }
-                currentLabel.description = desc;
-            }
-        }
-    }
-    if (currentLabel) labels.push(currentLabel);
-    return labels;
-}
+// parseLabelsYaml removed - logic moved to src/utils/labels.js
 
 async function applyLabels(config) {
     log('\n=== Apply Labels ===', 'blue');
 
-    // 1. Try Centralized Labels (New System)
-    const { source, labels: globalLabels } = await getLabels();
+    // 1. Get Labels (Prioritizes labels.md > config > cloud)
+    const { source, labels: labelsToApply } = await getLabels();
 
-    let labelsToApply = [];
-    let usingLegacy = false;
-
-    if (globalLabels && globalLabels.length > 0) {
-        log(`\n✓ Found ${globalLabels.length} labels from ${source} source.`, 'green');
-        const useGlobal = await askQuestion('Use these global labels? (y/n): ');
-        if (useGlobal.toLowerCase() === 'y') {
-            labelsToApply = globalLabels;
-        }
+    if (source === 'cloud') {
+        log('ℹ No local labels.md defined, using cloud labels pack.', 'pink');
     }
 
-    // 2. Fallback to Legacy labels.md if no global labels used
-    if (labelsToApply.length === 0) {
-        let content = '';
-        if (fs.existsSync(LABELS_FILE)) {
-            content = fs.readFileSync(LABELS_FILE, 'utf8');
-        }
-
-        if (content) {
-            const yamlMatch = content.match(/```yaml([\s\S]*?)```/);
-            if (yamlMatch) {
-                labelsToApply = parseLabelsYaml(yamlMatch[1]);
-                usingLegacy = true;
-                log(`\nFound ${labelsToApply.length} labels in legacy ~/.gitset/labels.md`, 'yellow');
-                const useLegacy = await askQuestion('Use these legacy labels? (y/n): ');
-                if (useLegacy.toLowerCase() !== 'y') labelsToApply = [];
-            }
-        }
-    }
-
-    if (labelsToApply.length === 0) {
+    if (!labelsToApply || labelsToApply.length === 0) {
         log('✗ No labels found to apply.', 'red');
-        log('  Use `gitset labels add` to create global labels.', 'yellow');
+        log('  Create a ~/.gitset/labels.md file or add labels to your cloud pack.', 'yellow');
         return;
     }
+
+    log(`\n✓ Found ${labelsToApply.length} labels from ${source}.`, 'green');
 
     // Verify gh CLI
     if (!execCommand('gh --version')) {
@@ -155,6 +101,11 @@ async function commandLabelspack(config, args) {
 
     if (isList || (!isAdd && !isApply && args.length === 0)) {
         const { source, labels } = await getLabels();
+
+        if (source === 'cloud') {
+            log('ℹ No local labels.md defined, using cloud labels pack.', 'pink');
+        }
+
         log(`\n=== Label Pack (${source}) ===`, 'blue');
         if (labels.length === 0) {
             log('No labels found in your pack.', 'yellow');
