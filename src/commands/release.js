@@ -1,6 +1,7 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { log, askQuestion, selectOption, colors } = require('../utils/ui');
 
 const BACKEND_URL = 'https://gitset-core-v2.vercel.app/api/release';
@@ -38,7 +39,7 @@ async function callBackend(payload, token) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}` // If token is used for auth
+                'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify(payload)
         });
@@ -51,11 +52,29 @@ async function callBackend(payload, token) {
     }
 }
 
-module.exports = async function commandRelease(options, config) {
-    log('\n🚀 GitSet Release Manager\n', 'green');
+function loadConfigFallback() {
+    try {
+        const configFile = path.join(os.homedir(), '.gitset', 'config.json');
+        if (fs.existsSync(configFile)) {
+            return JSON.parse(fs.readFileSync(configFile, 'utf8'));
+        }
+    } catch (e) {
+        return null;
+    }
+    return null;
+}
+
+module.exports = async function commandRelease(options, injectedConfig) {
+    // Ensure config is loaded
+    let config = injectedConfig;
+    if (!config || !config.gitset_key) {
+        config = loadConfigFallback();
+    }
+
+    console.log('\n=== Gitset Release Manager ===\n');
 
     if (!config || !config.gitset_key) {
-        log('Error: GitSet key not found. Please run "gitset auth" first.', 'red');
+        log('Error: Gitset key not found. Please run "gitset auth" first.', 'red');
         return;
     }
 
@@ -79,7 +98,7 @@ module.exports = async function commandRelease(options, config) {
             } else if (useLatestTag === 'manual') {
                 fromRef = await askQuestion('Enter start reference (tag/sha): ');
             } else if (useLatestTag === 'initial') {
-                fromRef = null; // Will fetch all commits to HEAD
+                fromRef = null;
             } else {
                 fromRef = useLatestTag;
             }
@@ -95,7 +114,6 @@ module.exports = async function commandRelease(options, config) {
     if (fromRef) {
         commits = getCommits(fromRef, toRef);
     } else {
-        // Initial release: get all commits
         const output = execCommand(`git log ${toRef} --pretty=format:"%h|%an|%s"`);
         if (output) {
             commits = output.split('\n').filter(Boolean).map(line => {
@@ -137,7 +155,7 @@ module.exports = async function commandRelease(options, config) {
                 commits: commits,
                 tagName: tagName,
                 instruction: instr,
-                repo_info: { name: path.basename(process.cwd()) } // Simple repo name guess
+                repo_info: { name: path.basename(process.cwd()) }
             };
             const data = await callBackend(payload);
             currentNotes = data.release_notes;
@@ -167,12 +185,10 @@ module.exports = async function commandRelease(options, config) {
             instruction = await askQuestion('Enter refinement instruction: ');
             await generate(instruction);
         } else if (action === 'edit') {
-            // Simple temp file edit
             const tempFile = path.join(os.tmpdir(), 'RELEASE_NOTES.md');
             fs.writeFileSync(tempFile, currentNotes);
             log(`Opening ${tempFile} in default editor...`, 'dim');
 
-            // Try to open editor
             try {
                 execSync(`${process.env.EDITOR || 'vi'} "${tempFile}"`, { stdio: 'inherit' });
                 currentNotes = fs.readFileSync(tempFile, 'utf8');
@@ -190,11 +206,11 @@ module.exports = async function commandRelease(options, config) {
 
             try {
                 execSync(ghCmd, { stdio: 'inherit' });
-                log('\n✅ Release created successfully!', 'green');
-                fs.unlinkSync(notesFile); // Cleanup
+                log('\nRelease created successfully!', 'green');
+                fs.unlinkSync(notesFile);
                 break;
             } catch (e) {
-                log('\n❌ Failed to create release with gh CLI.', 'red');
+                log('\nFailed to create release with gh CLI.', 'red');
                 log('Ensure "gh" is installed and authenticated.', 'dim');
                 log(`You can manually create the release using the content in ${notesFile}`, 'yellow');
                 break;
