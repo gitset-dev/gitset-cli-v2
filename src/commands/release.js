@@ -1,192 +1,204 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-const { log, askQuestion, selectOption } = require('../utils/ui');
+const { log, askQuestion, selectOption, colors } = require('../utils/ui');
+
+const BACKEND_URL = 'https://gitset-core-v2.vercel.app/api/release';
 
 function execCommand(cmd) {
     try {
-        return execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 1024 * 1024 * 10 }).trim();
+        return execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
     } catch (err) {
         return null;
     }
 }
 
-async function commandRelease(config, args) {
-    if (!config.gitset_key) {
-        log('✗ Gitset Key is required. Run `gitset init` to configure.', 'red');
-        return;
-    }
+function getTags() {
+    const tagsOutput = execCommand('git tag --sort=-creatordate');
+    return tagsOutput ? tagsOutput.split('\n').filter(Boolean) : [];
+}
 
-    // 1. Check if git repo
-    if (!execCommand('git rev-parse --is-inside-work-tree')) {
-        log('✗ Not a git repository.', 'red');
-        return;
-    }
+function getCommits(from, to) {
+    const cmd = `git log ${from}..${to} --pretty=format:"%h|%an|%s"`;
+    const output = execCommand(cmd);
+    if (!output) return [];
+    return output.split('\n').filter(Boolean).map(line => {
+        const [hash, author, message] = line.split('|');
+        return { hash, author, message };
+    });
+}
 
-    // 2. Get current version (from package.json or tag)
-    let currentVersion = '0.0.0';
-    let packageJsonPath = path.join(process.cwd(), 'package.json');
-    let hasPackageJson = fs.existsSync(packageJsonPath);
+function getCurrentBranch() {
+    return execCommand('git rev-parse --abbrev-ref HEAD') || 'HEAD';
+}
 
-    if (hasPackageJson) {
-        try {
-            const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-            currentVersion = pkg.version;
-        } catch (e) { }
-    } else {
-        // Try git tags
-        const lastTag = execCommand('git describe --tags --abbrev=0');
-        if (lastTag) currentVersion = lastTag.replace(/^v/, '');
-    }
-
-    log(`Current Version: ${currentVersion}`, 'cyan');
-
-    // 3. Determine new version
-    const type = await selectOption('Select release type:', [
-        { label: 'Patch (x.x.1)', value: 'patch' },
-        { label: 'Minor (x.1.0)', value: 'minor' },
-        { label: 'Major (1.x.x)', value: 'major' },
-        { label: 'Custom', value: 'custom' }
-    ]);
-
-    let newVersion = '';
-    const parts = currentVersion.split('.').map(Number);
-
-    if (type === 'patch') newVersion = `${parts[0]}.${parts[1]}.${parts[2] + 1}`;
-    if (type === 'minor') newVersion = `${parts[0]}.${parts[1] + 1}.0`;
-    if (type === 'major') newVersion = `${parts[0] + 1}.0.0`;
-    if (type === 'custom') {
-        newVersion = await askQuestion('Enter version: ');
-    }
-
-    if (!newVersion) return;
-
-    log(`\n→ Preparing release v${newVersion}...`, 'yellow');
-
-    // 4. Generate Release Notes
-    log('→ Generating release notes from commits...', 'cyan');
-
-    // Get commits since last tag
-    const lastTag = execCommand('git describe --tags --abbrev=0');
-    const range = lastTag ? `${lastTag}..HEAD` : 'HEAD';
-    const commits = execCommand(`git log ${range} --pretty=format:"%s"`);
-
-    let releaseNotes = '';
-
+async function callBackend(payload, token) {
     try {
-        const response = await fetch('https://gitset-core-v2.vercel.app/api/release', {
+        const response = await fetch(BACKEND_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'generate',
-                gitset_key: config.gitset_key,
-                version: newVersion,
-                commits: commits
-            })
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` // If token is used for auth
+            },
+            body: JSON.stringify(payload)
         });
 
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.error || 'API Error');
-        }
-
         const data = await response.json();
-        releaseNotes = data.notes;
-
+        if (!response.ok) throw new Error(data.error || 'Backend request failed');
+        return data;
     } catch (error) {
-        log(`✗ Failed to generate notes: ${error.message}`, 'red');
-        releaseNotes = `## Release v${newVersion}\n\n${commits}`;
-    }
-
-    // 5. Review Loop
-    while (true) {
-        log('\nRelease Notes Preview:', 'green');
-        console.log('----------------------------------------');
-        console.log(releaseNotes);
-        console.log('----------------------------------------');
-
-        const action = await selectOption('What would you like to do?', [
-            { label: 'Publish Release', value: 'publish' },
-            { label: 'Refine with AI', value: 'refine' },
-            { label: 'Edit Manually', value: 'edit' },
-            { label: 'Cancel', value: 'cancel' }
-        ]);
-
-        if (action === 'cancel') {
-            log('Cancelled.', 'yellow');
-            return;
-        }
-
-        if (action === 'publish') {
-            break;
-        }
-
-        if (action === 'edit') {
-            log('Enter new notes (end with empty line):', 'cyan');
-            releaseNotes = await askQuestion('Paste new notes here (single line for now): ');
-        }
-
-        if (action === 'refine') {
-            const instruction = await askQuestion('Refinement instruction: ');
-            log('→ Refining...', 'yellow');
-            try {
-                const res = await fetch('https://gitset-core-v2.vercel.app/api/release', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        action: 'refine',
-                        gitset_key: config.gitset_key,
-                        current_notes: releaseNotes,
-                        instruction
-                    })
-                });
-                const data = await res.json();
-                releaseNotes = data.notes;
-            } catch (e) {
-                log(`✗ Error: ${e.message}`, 'red');
-            }
-        }
-    }
-
-    // 6. Execute Release
-    log('\n→ Executing Release...', 'yellow');
-
-    // Update package.json
-    if (hasPackageJson) {
-        const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-        pkg.version = newVersion;
-        fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2));
-        log('✓ Updated package.json', 'green');
-        execCommand('git add package.json');
-        execCommand(`git commit -m "chore: release v${newVersion}"`);
-    }
-
-    // Create Tag
-    execCommand(`git tag v${newVersion}`);
-    log('✓ Created git tag', 'green');
-
-    // Push
-    log('→ Pushing changes...', 'cyan');
-    execCommand('git push && git push --tags');
-
-    // Create GitHub Release
-    if (execCommand('gh --version')) {
-        log('→ Creating GitHub Release...', 'cyan');
-        // Write notes to temp file
-        const notesFile = path.join(os.tmpdir(), 'release_notes.md');
-        fs.writeFileSync(notesFile, releaseNotes);
-
-        try {
-            execCommand(`gh release create v${newVersion} --title "v${newVersion}" --notes-file "${notesFile}"`);
-            log('✓ GitHub Release published!', 'green');
-            log(`→ https://github.com/${config.repo_owner}/${config.repo_name}/releases/tag/v${newVersion}`, 'blue');
-        } catch (e) {
-            log(`✗ Failed to create GitHub release: ${e.message}`, 'red');
-        }
-    } else {
-        log('✗ GitHub CLI not found. Skipping release creation.', 'yellow');
+        throw error;
     }
 }
 
-module.exports = commandRelease;
+module.exports = async function commandRelease(options, config) {
+    log('\n🚀 GitSet Release Manager\n', 'green');
+
+    if (!config || !config.gitset_key) {
+        log('Error: GitSet key not found. Please run "gitset auth" first.', 'red');
+        return;
+    }
+
+    // 1. Select References
+    let fromRef = options.from;
+    let toRef = options.to || getCurrentBranch();
+
+    if (!fromRef) {
+        const tags = getTags();
+        if (tags.length > 0) {
+            const useLatestTag = await selectOption('Select previous tag (From):', [
+                { label: `Latest Tag (${tags[0]})`, value: tags[0] },
+                { label: 'Select from list', value: 'list' },
+                { label: 'Manual Input', value: 'manual' },
+                { label: 'No previous tag (Initial Release)', value: 'initial' }
+            ]);
+
+            if (useLatestTag === 'list') {
+                const tagSelection = await selectOption('Select tag:', tags.slice(0, 10).map(t => ({ label: t, value: t })));
+                fromRef = tagSelection;
+            } else if (useLatestTag === 'manual') {
+                fromRef = await askQuestion('Enter start reference (tag/sha): ');
+            } else if (useLatestTag === 'initial') {
+                fromRef = null; // Will fetch all commits to HEAD
+            } else {
+                fromRef = useLatestTag;
+            }
+        } else {
+            log('No tags found. Assuming initial release.', 'yellow');
+            fromRef = null;
+        }
+    }
+
+    // 2. Fetch Commits
+    log(`\nAnalyzing commits from ${fromRef ? fromRef : 'start'} to ${toRef}...`, 'dim');
+    let commits = [];
+    if (fromRef) {
+        commits = getCommits(fromRef, toRef);
+    } else {
+        // Initial release: get all commits
+        const output = execCommand(`git log ${toRef} --pretty=format:"%h|%an|%s"`);
+        if (output) {
+            commits = output.split('\n').filter(Boolean).map(line => {
+                const [hash, author, message] = line.split('|');
+                return { hash, author, message };
+            });
+        }
+    }
+
+    if (commits.length === 0) {
+        log('No commits found in range.', 'yellow');
+        const proceed = await selectOption('Proceed anyway?', [
+            { label: 'Yes, use Manual Mode', value: 'manual' },
+            { label: 'Abort', value: 'abort' }
+        ]);
+        if (proceed === 'abort') return;
+    } else {
+        log(`Found ${commits.length} commits.`, 'green');
+    }
+
+    // 3. Tag Name
+    let tagName = options.version;
+    while (!tagName) {
+        tagName = await askQuestion('Enter new tag name (e.g. v1.2.0): ');
+        if (!tagName) log('Tag name is required.', 'red');
+    }
+
+    // 4. Generate Notes
+    let currentNotes = '';
+    let draftId = null;
+    let instruction = '';
+
+    const generate = async (instr = '') => {
+        log('\nGenerating release notes...', 'cyan');
+        try {
+            const payload = {
+                action: 'generate',
+                gitset_key: config.gitset_key,
+                commits: commits,
+                tagName: tagName,
+                instruction: instr,
+                repo_info: { name: path.basename(process.cwd()) } // Simple repo name guess
+            };
+            const data = await callBackend(payload);
+            currentNotes = data.release_notes;
+            draftId = data.draft_id;
+            log('\n--- Generated Release Notes ---\n', 'green');
+            console.log(currentNotes);
+            log('\n-------------------------------\n', 'green');
+        } catch (err) {
+            log(`Generation failed: ${err.message}`, 'red');
+        }
+    };
+
+    await generate();
+
+    // 5. Interactive Loop
+    while (true) {
+        const action = await selectOption('What would you like to do?', [
+            { label: 'Create Release (GitHub)', value: 'create' },
+            { label: 'Refine with AI', value: 'refine' },
+            { label: 'Edit Manually (Open Editor)', value: 'edit' },
+            { label: 'Abort', value: 'abort' }
+        ]);
+
+        if (action === 'abort') break;
+
+        if (action === 'refine') {
+            instruction = await askQuestion('Enter refinement instruction: ');
+            await generate(instruction);
+        } else if (action === 'edit') {
+            // Simple temp file edit
+            const tempFile = path.join(os.tmpdir(), 'RELEASE_NOTES.md');
+            fs.writeFileSync(tempFile, currentNotes);
+            log(`Opening ${tempFile} in default editor...`, 'dim');
+
+            // Try to open editor
+            try {
+                execSync(`${process.env.EDITOR || 'vi'} "${tempFile}"`, { stdio: 'inherit' });
+                currentNotes = fs.readFileSync(tempFile, 'utf8');
+                log('Notes updated from editor.', 'green');
+            } catch (e) {
+                log('Failed to open editor. You can edit the file manually.', 'red');
+            }
+        } else if (action === 'create') {
+            const notesFile = 'RELEASE_NOTES.md';
+            fs.writeFileSync(notesFile, currentNotes);
+            log(`Saved notes to ${notesFile}`, 'dim');
+
+            log('Attempting to create release via gh CLI...', 'cyan');
+            const ghCmd = `gh release create ${tagName} --title "${tagName}" --notes-file "${notesFile}"`;
+
+            try {
+                execSync(ghCmd, { stdio: 'inherit' });
+                log('\n✅ Release created successfully!', 'green');
+                fs.unlinkSync(notesFile); // Cleanup
+                break;
+            } catch (e) {
+                log('\n❌ Failed to create release with gh CLI.', 'red');
+                log('Ensure "gh" is installed and authenticated.', 'dim');
+                log(`You can manually create the release using the content in ${notesFile}`, 'yellow');
+                break;
+            }
+        }
+    }
+};
