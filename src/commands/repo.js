@@ -7,6 +7,7 @@ const { log, askQuestion, selectOption } = require('../utils/ui');
 const CONFIG_DIR = path.join(os.homedir(), '.gitset');
 const LABELS_FILE = path.join(CONFIG_DIR, 'labels.md');
 const API_URL = 'https://gitset-core-v2.vercel.app/api/repo';
+const LICENSES_API_URL = 'https://gitset-core-v2.vercel.app/api/licenses';
 
 function execCommand(cmd) {
     try {
@@ -470,6 +471,81 @@ async function handleBackup(config) {
     log('\n✓ Backup configuration complete!', 'green');
 }
 
+// --- License Logic ---
+
+async function generateLicense(config) {
+    log('\nGitset License Generator', 'cyan');
+    log('===========================', 'cyan');
+
+    try {
+        // 1. Fetch available licenses
+        const res = await fetch(LICENSES_API_URL);
+        if (!res.ok) throw new Error('Failed to fetch licenses');
+        const licenses = await res.json();
+
+        // 2. Select License
+        const options = licenses.map(l => ({
+            label: l.name,
+            value: l.id
+        }));
+        options.push({ label: 'Cancel', value: 'cancel' });
+
+        const selectedId = await selectOption('Select a license:', options);
+        if (selectedId === 'cancel') return;
+
+        const selectedLicense = licenses.find(l => l.id === selectedId);
+
+        // 3. Show Description
+        log(`\nDescription: ${selectedLicense.description}`, 'yellow');
+
+        // 4. Get Owner if required
+        let owner = '';
+        if (selectedLicense.requiresOwner) {
+            // Try to guess owner from git config or config
+            let defaultOwner = '';
+            try {
+                defaultOwner = execCommand('git config user.name') || '';
+            } catch (e) { }
+
+            owner = await askQuestion(`Copyright Holder (${defaultOwner}): `);
+            if (!owner) owner = defaultOwner;
+            if (!owner) {
+                log('✗ Owner is required for this license.', 'red');
+                return;
+            }
+        }
+
+        // 5. Generate Content
+        log('\n→ Generating license...', 'cyan');
+        const genRes = await fetch(LICENSES_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'generate',
+                licenseId: selectedId,
+                year: new Date().getFullYear(),
+                owner
+            })
+        });
+
+        if (!genRes.ok) throw new Error('Failed to generate license content');
+        const data = await genRes.json();
+
+        // 6. Write File
+        const targetFile = 'LICENSE';
+        if (fs.existsSync(targetFile)) {
+            const overwrite = await askQuestion(`File ${targetFile} already exists. Overwrite? (y/n): `);
+            if (overwrite.toLowerCase() !== 'y') return;
+        }
+
+        fs.writeFileSync(targetFile, data.content, 'utf8');
+        log(`\n✓ License created successfully: ${targetFile}`, 'green');
+
+    } catch (error) {
+        log(`✗ Error: ${error.message}`, 'red');
+    }
+}
+
 // --- Main Command ---
 
 async function commandRepo(config, args) {
@@ -487,6 +563,8 @@ async function commandRepo(config, args) {
         const choice = await selectOption('Select a tool:', [
             { label: 'Label Pack Manager (Moved to `gitset labelspack`)', value: 'labels' },
             { label: 'About Generator (Description & Topics)', value: 'about' },
+            { label: 'About Generator (Description & Topics)', value: 'about' },
+            { label: 'License Generator', value: 'license' },
             { label: 'Backup Manager (Forks & Sync)', value: 'backup' },
             { label: 'Exit', value: 'exit' }
         ]);
@@ -497,6 +575,7 @@ async function commandRepo(config, args) {
             await commandLabelspack(config, ['--apply']);
         }
         if (choice === 'about') await generateAbout(config);
+        if (choice === 'license') await generateLicense(config);
         if (choice === 'backup') await handleBackup(config);
     }
 }
