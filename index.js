@@ -1964,7 +1964,7 @@ function loadReadmeTemplate() {
 // --- README Generator ---
 const { analyzeRepo } = require('./src/utils/repo-analyzer');
 const { generateBadges } = require('./src/utils/badge-generator');
-const { getLicenseList, generateLicenseFile } = require('./src/utils/license-generator');
+const { fetchLicenses, generateLicenseContent } = require('./src/utils/license-generator');
 
 async function callReadmeApi(payload) {
   const gitsetKey = getGitsetKey();
@@ -2006,17 +2006,46 @@ async function commandReadme(options = {}) {
   if (!analysis.hasLicense) {
     const addLicense = await askQuestion('\n⚠️  No LICENSE found. Add one? (y/n): ');
     if (addLicense.toLowerCase() === 'y') {
-      const licenses = getLicenseList();
-      log('Available Licenses:', 'cyan');
-      licenses.forEach((l, i) => log(`${i + 1}. ${l}`, 'reset'));
-      const sel = await askQuestion('Select license (number): ');
-      const idx = parseInt(sel) - 1;
-      if (idx >= 0 && idx < licenses.length) {
-        const author = await askQuestion('Author Name: ');
-        const year = new Date().getFullYear();
-        generateLicenseFile(licenses[idx], author, year, process.cwd());
-        log('✓ LICENSE file created.', 'green');
-        analysis.hasLicense = true;
+      log('→ Fetching licenses...', 'cyan');
+      const licenses = await fetchLicenses();
+
+      if (licenses.length > 0) {
+        log('Available Licenses:', 'cyan');
+        const options = licenses.map(l => ({
+          label: l.name,
+          value: l.id
+        }));
+
+        const selectedId = await selectOption('Select license:', options);
+        const selectedLicense = licenses.find(l => l.id === selectedId);
+
+        if (selectedLicense) {
+          log(`\nDescription: ${selectedLicense.description}`, 'yellow');
+
+          let owner = '';
+          let year = new Date().getFullYear();
+
+          if (selectedLicense.requiresOwner) {
+            let defaultOwner = '';
+            try {
+              defaultOwner = execCommand('git config user.name') || '';
+            } catch (e) { }
+
+            owner = await askQuestion(`Copyright Holder (${defaultOwner}): `);
+            if (!owner) owner = defaultOwner;
+          }
+
+          const content = await generateLicenseContent(selectedId, year, owner);
+          if (content) {
+            fs.writeFileSync(path.join(process.cwd(), 'LICENSE'), content);
+            log('✓ LICENSE file created.', 'green');
+            analysis.hasLicense = true;
+          } else {
+            log('✗ Failed to generate license content.', 'red');
+          }
+        }
+      } else {
+        log('✗ Failed to fetch licenses from server.', 'red');
       }
     }
   }
