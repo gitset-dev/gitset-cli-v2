@@ -1,6 +1,131 @@
-# Database Analysis: gitset
+# Gitset Ecosystem: Exhaustive Audit Report
+**Date:** 2025-12-06
+**Time:** 09:35 AM
 
-**Generated:** 30/11/2025, 12:53:09
+## 1. Executive Summary
+This document provides a detailed technical explanation of every component in the Gitset ecosystem (`web`, `cli`, `core`). The architecture is defined by a **Single Database (Turso)** accessed by two distinct clients:
+1.  **Gitset Web**: Uses Drizzle ORM for direct DB access (Auth/Dashboard) and proxies complex AI tasks to Core.
+2.  **Gitset CLI**: Uses local logic + API calls to Core.
+3.  **Gitset Core**: The centralized API for AI logic, Writes, and Quota management.
+
+---
+
+## 2. 📂 Project: Gitset-Web (`/Desktop/gitset-web`)
+**Stack**: Astro (SSR), React, Drizzle ORM, Tailwind.
+
+### A. Configuration & Root
+*   **`astro.config.mjs`**: Configures Astro with React integration and Tailwind.
+*   **`drizzle.config.ts`**: Specifies the location of schema files and the DB connection string for Drizzle Kit migrations.
+*   **`middleware.ts`**: **Security Critical**. Intercepts every request. Checks for `app_auth_token` cookie. If missing on protected routes (`/dashboard`), redirects to `/`.
+
+### B. Source Code (`src/`)
+
+#### 1. Components (`src/components/`)
+*   **Interactive Tools** (`src/components/tools/`):
+    *   **`IssueCrafter.tsx`**: UI Engine for creating issues. Fetches templates, calls AI proxy, and pushes to GitHub.
+    *   **`PRManager.tsx`**: Dashboard for PRs. **Logic**: Fetches PRs via API, handles conflicts, and supports bulk actions (Merge, Close).
+    *   **`ReleaseManager.tsx`**: UI for generating release notes from commits.
+    *   **`RepoSetup.tsx`**: Configures labels and description.
+    *   **`ReadmeGenerator.tsx`**: Form-based UI to generate README files via AI.
+    *   **`BackupStatusWidget.tsx`**: Visual component showing the last backup time (fetched from DB).
+*   **Modals & UI** (`src/components/modals`, `ui`):
+    *   **`LabelManagerModal.tsx`**: React portal for editing/creating labels.
+    *   **`LoginModal.tsx`**: Handles the "Sign in with GitHub" OAuth redirect.
+    *   **`TemplateEditorModal.tsx`**: Allows users to edit their stored AI prompts (saved in `user_settings` table).
+    *   **`ui/`**: Reusable Shadcn/Radix primitives (`button.tsx`, `card.tsx`, `loader.tsx`).
+
+#### 2. Database (`src/db/`)
+*   **`schema.ts`**: **Source of Truth**. Defines tables: `users`, `sessions`, `credentials`, `message_usage`.
+    *   *Warning*: `gitset-core` does NOT import this; it uses raw SQL. Schema changes here must be manually synced to Core's queries.
+*   **`index.ts`**: Exports the verified `db` connection instance.
+
+#### 3. Libraries (`src/lib/`)
+*   **`auth.ts`**: Session management (Create/Verify/Destroy session cookies). Accesses `db` directly.
+*   **`getUser.ts`**: Extract user profile from the session token. used by Middleware and API routes.
+*   **`githubStatus.ts`**: Fetches uptime status from `githubstatus.com` (Pure utility).
+
+#### 4. Pages & API Routes (`src/pages/`)
+*   **Dashboard (`dashboard.astro`)**: SSR page.
+    *   **Logic**: Verifies cookie -> Fetches User -> Queries `sessions` and `message_usage` via Drizzle -> Renders UI.
+    *   *Observation*: Reads "Quota" usage directly from DB to show the progress bar.
+*   **API Proxies (`src/pages/api/`)**:
+    *   **Pattern**: These files (`issue.ts`, `release.ts`, `pr.ts`) act as a security bridge.
+    *   **Flow**: Client Request -> **Web Proxy** (Validates Cookie, Injects User's stored `gitset_key`) -> **Core API** (Performs AI/Quota work).
+    *   **`auth/github.ts`**: Starts OAuth flow. Redirects to GitHub.
+    *   **`auth/callback/github.ts`**: Receives code, exchanges for token, **Calls `gitset-core/api/register`** to create user/key.
+
+---
+
+## 3. 📂 Project: Gitset-CLI-v2 (`/Desktop/gitset-cli-v2`)
+**Stack**: Node.js, Commander (implied), Raw Fetch.
+
+### A. Commands (`src/commands/`)
+*   **`repo.js`**: Main entry for repo management.
+    *   **Logic**: Uses `gh` CLI for local git ops. Calls Core API for interacting with "Cloud" settings.
+*   **`dependabot-resolver.js`**: **Smart Agent**.
+    *   **Logic**: 
+        1. Fetches Dependabot alerts via API (or `gh`).
+        2. Parses local `package.json` / `requirements.txt` to find current version.
+        3. Calculates Risk.
+        4. Auto-patches files if safe.
+*   **`labelspack.js`**: syncs labels from a JSON/YAML pack to the current repo.
+*   **`release.js`**: Generates release notes. Reads local `git log` -> Sends to Core API -> Receiving Markdown.
+
+### B. Utilities (`src/utils/`)
+*   **`repo-analyzer.js`**: Scans the current directory (`package.json`, `Dockerfile`) to detect Language and Framework. used to add context to AI prompts.
+*   **`ui.js`**: Terminal formatting (colors, spinners, interaction).
+
+---
+
+## 4. 📂 Project: Gitset-Core-v2 (`/Desktop/gitset-core-v2`)
+**Stack**: Vercel Serverless Functions, LibSQL (Turso), Google Gemini.
+
+### A. API Endpoints (`api/`)
+*   **`register.js`**: User Onboarding.
+    *   **Logic**: Checks if email exists. If not, `INSERT INTO credentials`. Generates `gitset_key`.
+*   **`validate.js`**: Authentication Gate.
+    *   **Logic**: `SELECT * FROM credentials WHERE gitset_key = ?`. Returns Plan info (`basic`/`pro`).
+*   **`commit.js` / `release.js` / `pr.js`**: AI Generators.
+    *   **Common Flow**:
+        1. Validate Key.
+        2. **Check Quota** (`checkAndUpdateQuota` function).
+        3. Call Gemini (with Fallback to backup Keys).
+        4. Log usage to `message_usage`.
+        5. Return Text.
+*   **`regenerate_key.js`**: Security feature. Rotates the API Key for a user.
+
+### B. Core logic
+*   **`checkAndUpdateQuota` (Internal Function)**:
+    *   **CRITICAL**: Hardcoded limits (`Basic: 50`, `Pro: 200`). This is technical debt that must be addressed for Lemon Squeezy integration.
+*   **Database Access**: Uses `@libsql/client` with **Raw SQL Queries**.
+    *   *Risk*: High probability of syntax errors or schema drift vs Gitset-Web's Drizzle schema.
+
+---
+
+## 5. Critical Findings & Next Steps
+
+### 🔴 High Risk: Schema Fragmentation
+*   **Web** uses Drizzle (`schema.ts`).
+*   **Core** uses Raw Strings (`INSERT INTO...`).
+*   **Fix**: Move the Database Schema to a shared `gitset-shared` package or force Core to use Drizzle.
+
+### 🟠 Medium Risk: Quota Management
+*   Quotas are hardcoded in `gitset-core-v2/api/*.js`.
+*   **Action for Payments**: Must be refactored to read from a `plans` table or be dynamic based on the Lemon Squeezy subscription tier.
+
+### 🟡 Low Risk: Logic Duplication
+*   `repo-analyzer.js` (CLI) logic might need to be replicated in the Web if you ever want to analyze repos via URL in the dashboard.
+
+## 6. Payment Integration Roadmap (Lemon Squeezy)
+1.  **Core**: Create `api/webhooks/lemonsqueezy.js` to handle `subscription_created`.
+2.  **DB**: Add `subscription_id`, `customer_id`, `next_billing_date` to `credentials` table.
+3.  **Refactor**: Modify `checkAndUpdateQuota` to check the `user_plan` column which is now updated by the webhook, rather than static strings.
+
+
+-- 
+
+DATABASE_SCHEMA ->
+# Database Analysis: gitset
 
 ## Statistics
 
