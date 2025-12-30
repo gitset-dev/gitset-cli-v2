@@ -7,7 +7,7 @@ const { log, askQuestion, selectOption } = require('./ui');
 const CONFIG_DIR = path.join(os.homedir(), '.gitset');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 // TODO: Update this to the deployed gitset-web URL
-const WEB_API_URL = 'http://localhost:3000/api/labels';
+const WEB_API_URL = 'http://localhost:4321/api/labels';
 
 function loadConfig() {
     if (!fs.existsSync(CONFIG_FILE)) return null;
