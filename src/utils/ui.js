@@ -43,9 +43,56 @@ async function selectOption(title, options) {
     }
 }
 
+async function selectMultipleOptions(title, options) {
+    log(`\n${title}`, 'reset');
+    options.forEach((opt, i) => {
+        log(`${i + 1}. ${opt.label}`, 'cyan');
+    });
+    log('0. Done / Confirm Selection', 'green');
+    log('C. Cancel', 'red');
+
+    const selectedValues = new Set();
+
+    while (true) {
+        const currentSelection = options
+            .filter(opt => selectedValues.has(opt.value))
+            .map(opt => opt.label)
+            .join(', ');
+
+        if (currentSelection) {
+            log(`\nCurrent selection: ${currentSelection}`, 'yellow');
+        }
+
+        const answer = await askQuestion('\nSelect options (enter number to toggle, 0 to confirm, C to cancel): ');
+        const index = parseInt(answer) - 1;
+
+        if (answer === '0') {
+            return Array.from(selectedValues);
+        }
+
+        if (answer.toLowerCase() === 'c') {
+            return null;
+        }
+
+        if (index >= 0 && index < options.length) {
+            const value = options[index].value;
+            if (selectedValues.has(value)) {
+                selectedValues.delete(value);
+                log(`Removed: ${options[index].label}`, 'red');
+            } else {
+                selectedValues.add(value);
+                log(`Added: ${options[index].label}`, 'green');
+            }
+        } else {
+            log('Invalid selection', 'red');
+        }
+    }
+}
+
 module.exports = {
     log,
     askQuestion,
     selectOption,
+    selectMultipleOptions,
     colors
 };

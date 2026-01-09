@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const readline = require('readline');
-const { log, askQuestion, selectOption, colors } = require('./src/utils/ui');
+const { log, askQuestion, selectOption, selectMultipleOptions, colors } = require('./src/utils/ui');
 
 const BACKEND_URL = 'https://gitset-core-v2.vercel.app/api/commit';
 const CONFIG_DIR = path.join(os.homedir(), '.gitset');
@@ -2261,16 +2261,126 @@ async function main() {
     case 'tree': {
       const excludePatterns = [];
       let useGitignore = false;
+      let interactive = false;
 
-      for (let i = 1; i < args.length; i++) {
-        if (args[i] === '--flag') {
-          if (args[i + 1] === '--gitignore') {
-            useGitignore = true;
-            i++;
-          } else if (args[i + 1]) {
-            const pattern = args[i + 1];
-            excludePatterns.push(pattern);
-            i++;
+      // Check for interactive mode
+      const flagIndex = args.indexOf('--flag');
+      if (flagIndex !== -1) {
+        // If --flag is the last argument or followed by another flag (that isn't a value for it in legacy handling)
+        // But wait, legacy handling expects values.
+        // If user types JUST `gitset tree --flag`, args is ['tree', '--flag']
+        if (args.length === 2 && args[1] === '--flag') {
+          interactive = true;
+        } else {
+          // Check if --flag is used as a standalone switch for interactive mode
+          // or if it's being used with arguments as before.
+          // The user wants `gitset tree --flag` to be interactive.
+          // Existing behavior: `gitset tree --flag value`.
+          // if we have `gitset tree --flag`, interactive.
+          // if we have `gitset tree --flag value`, non-interactive.
+
+          // Actually, we can just check if --flag has no value.
+          if (!args[flagIndex + 1] || args[flagIndex + 1].startsWith('--')) {
+            if (args[flagIndex + 1] !== '--gitignore') { // --gitignore is a special value in legacy
+              interactive = true;
+            }
+          }
+        }
+      }
+
+      if (interactive) {
+        log('\n=== Interactive Tree Filter ===', 'blue');
+
+        while (true) {
+          log('\nCurrent Filters:', 'yellow');
+          if (useGitignore) log('  - .gitignore rules', 'cyan');
+          if (excludePatterns.length > 0) {
+            excludePatterns.forEach(p => log(`  - ${p}`, 'cyan'));
+          }
+          if (!useGitignore && excludePatterns.length === 0) log('  (None)', 'dim');
+
+          const gitignoreActionLabel = useGitignore
+            ? 'Disable .gitignore rules (Currently ON)'
+            : 'Enable .gitignore rules (Currently OFF)';
+
+          const action = await selectOption('Choose an action:', [
+            { label: 'Run Tree', value: 'run' },
+            { label: 'Filter Folders', value: 'folders' },
+            { label: 'Filter Files by Extension', value: 'ext' },
+            { label: gitignoreActionLabel, value: 'gitignore' },
+            { label: 'Clear All Filters', value: 'clear' },
+            { label: 'Cancel', value: 'cancel' }
+          ]);
+
+          if (action === 'cancel') return;
+
+          if (action === 'run') break;
+
+          if (action === 'gitignore') {
+            useGitignore = !useGitignore;
+            log(`\n.gitignore rules ${useGitignore ? 'enabled' : 'disabled'}`, 'green');
+          }
+
+          if (action === 'clear') {
+            excludePatterns.length = 0;
+            useGitignore = false;
+            log('\nFilters cleared', 'green');
+          }
+
+          if (action === 'folders') {
+            // Scan top-level directories
+            const dirs = fs.readdirSync(process.cwd())
+              .filter(f => {
+                try {
+                  return fs.statSync(f).isDirectory() && f !== '.git';
+                } catch { return false; }
+              })
+              .map(d => ({ label: `/${d}`, value: `/${d}` }));
+
+            if (dirs.length === 0) {
+              log('No directories found in root.', 'yellow');
+              continue;
+            }
+
+            const selected = await selectMultipleOptions('Select folders to EXCLUDE:', dirs);
+
+            if (selected === null) {
+              log('Selection cancelled.', 'yellow');
+              continue;
+            }
+
+            selected.forEach(dir => {
+              if (!excludePatterns.includes(dir)) {
+                excludePatterns.push(dir);
+              }
+            });
+          }
+
+          if (action === 'ext') {
+            const ext = await askQuestion('\nEnter extension to exclude (e.g. .md, .png) or "c" to cancel: ');
+            if (ext && ext.toLowerCase() !== 'c') {
+              const cleanExt = ext.startsWith('.') ? ext : `.${ext}`;
+              if (!excludePatterns.includes(cleanExt)) {
+                excludePatterns.push(cleanExt);
+                log(`Added exclude: ${cleanExt}`, 'green');
+              }
+            } else if (ext.toLowerCase() === 'c') {
+              log('Cancelled.', 'yellow');
+            }
+          }
+        }
+      } else {
+        // Legacy Argument Parsing
+        for (let i = 1; i < args.length; i++) {
+          if (args[i] === '--flag') {
+            if (args[i + 1] === '--gitignore') {
+              useGitignore = true;
+              i++;
+            } else if (args[i + 1]) {
+              const pattern = args[i + 1];
+              excludePatterns.push(pattern);
+              i++;
+            }
           }
         }
       }
