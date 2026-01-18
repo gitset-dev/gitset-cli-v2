@@ -1220,8 +1220,8 @@ function loadReadmeTemplate() {
 
 function getAssignees() {
   try {
-    // Fetch collaborators who can be assigned
-    const output = execCommand('gh api repos/:owner/:repo/collaborators --jq ".[].login"');
+    // Fetch assignees directly using the assignees endpoint which is more accurate for issues
+    const output = execCommand('gh api repos/:owner/:repo/assignees --jq ".[].login"');
     if (!output) return [];
     return output.split('\n').filter(Boolean);
   } catch {
@@ -1691,6 +1691,15 @@ async function commandIssue(options = {}) {
   if (!gitsetKey) {
     log('✗ Not authenticated. Use: gitset auth', 'red');
     return;
+  }
+
+  // Ensure GH_TOKEN is set for gh CLI commands using our stored token
+  const config = loadConfig();
+  if (config && config.github_token) {
+    process.env.GH_TOKEN = config.github_token;
+  } else if (config && config.github_oauth_token) {
+    // handling both possible key names just in case, though authenticate saves as github_oauth_token
+    process.env.GH_TOKEN = config.github_oauth_token;
   }
 
   if (options.close) {
