@@ -1220,8 +1220,8 @@ function loadReadmeTemplate() {
 
 function getAssignees() {
   try {
-    // Fetch collaborators who can be assigned
-    const output = execCommand('gh api repos/:owner/:repo/collaborators --jq ".[].login"');
+    // Fetch assignees directly using the assignees endpoint which is more accurate for issues
+    const output = execCommand('gh api repos/:owner/:repo/assignees --jq ".[].login"');
     if (!output) return [];
     return output.split('\n').filter(Boolean);
   } catch {
@@ -1355,6 +1355,15 @@ async function commandPR(options = {}) {
   if (!gitsetKey) {
     log('✗ Not authenticated. Use: gitset auth', 'red');
     return;
+  }
+
+  // Ensure GH_TOKEN is set for gh CLI commands using our stored token
+  const config = loadConfig();
+  if (config) {
+    const token = config.github_token || config.github_oauth_token;
+    if (token) {
+      process.env.GH_TOKEN = token;
+    }
   }
 
   log('\n=== Gitset PR Maker ===', 'blue');
@@ -1691,6 +1700,16 @@ async function commandIssue(options = {}) {
   if (!gitsetKey) {
     log('✗ Not authenticated. Use: gitset auth', 'red');
     return;
+  }
+
+  // Ensure GH_TOKEN is set for gh CLI commands using our stored token
+  const config = loadConfig();
+  if (config) {
+    // The `authenticate` function saves the token as `github_token`. We check `github_oauth_token` as a fallback for robustness.
+    const token = config.github_token || config.github_oauth_token;
+    if (token) {
+      process.env.GH_TOKEN = token;
+    }
   }
 
   if (options.close) {
