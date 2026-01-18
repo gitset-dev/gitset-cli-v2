@@ -4,6 +4,15 @@ const os = require('os');
 const { execSync } = require('child_process');
 const { log, askQuestion, selectOption } = require('./ui');
 
+function getRepoLabels() {
+    try {
+        const output = execSync('gh api repos/:owner/:repo/labels --jq "map({name: .name, color: .color, description: .description})"', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+        return JSON.parse(output);
+    } catch (e) {
+        return [];
+    }
+}
+
 const CONFIG_DIR = path.join(os.homedir(), '.gitset');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 // TODO: Update this to the deployed gitset-web URL
@@ -249,12 +258,22 @@ async function deleteLabel(id) {
 }
 
 // Interactive Manager (Updated)
-async function manageLabelsInteractive(currentLabels) {
+async function manageLabelsInteractive(currentLabels, options = {}) {
     // This function is for selecting labels for a PR/Issue, NOT for managing the global label list (CRUD).
     // But the user might want to create a new label ON THE FLY.
 
     // We need to fetch available labels first
-    const { labels: availableLabels, source } = await getLabels();
+    let availableLabels = [];
+    let source = 'unknown';
+
+    if (options.useRepo) {
+        availableLabels = getRepoLabels();
+        source = 'this repository';
+    } else {
+        const res = await getLabels();
+        availableLabels = res.labels;
+        source = res.source;
+    }
 
     while (true) {
         console.clear();
@@ -273,7 +292,7 @@ async function manageLabelsInteractive(currentLabels) {
 
         if (action === 'add') {
             if (availableLabels.length === 0) {
-                log('No existing labels found.', 'yellow');
+                log(`No existing labels found in ${source}.`, 'yellow');
                 await new Promise(r => setTimeout(r, 1000));
             } else {
                 log('\nAvailable Labels:', 'cyan');

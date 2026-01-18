@@ -1557,7 +1557,7 @@ async function commandPR(options = {}) {
     }
 
     if (action === 'labels') {
-      currentLabels = await manageLabelsInteractive(currentLabels);
+      currentLabels = await manageLabelsInteractive(currentLabels, { useRepo: true });
     }
 
     if (action === 'milestone') {
@@ -2010,7 +2010,7 @@ async function commandIssue(options = {}) {
     }
 
     if (action === 'labels') {
-      currentLabels = await manageLabelsInteractive(currentLabels);
+      currentLabels = await manageLabelsInteractive(currentLabels, { useRepo: true });
     }
   }
 }
