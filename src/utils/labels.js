@@ -4,10 +4,13 @@ const os = require('os');
 const { execSync } = require('child_process');
 const { log, askQuestion, selectOption } = require('./ui');
 
-function getRepoLabels() {
+async function getRepoLabels() {
+    const util = require('util');
+    const { exec } = require('child_process');
+    const execAsync = util.promisify(exec);
     try {
-        const output = execSync('gh api repos/:owner/:repo/labels --jq "map({name: .name, color: .color, description: .description})"', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-        return JSON.parse(output);
+        const { stdout } = await execAsync('gh api repos/:owner/:repo/labels --jq "map({name: .name, color: .color, description: .description})"', { encoding: 'utf8' });
+        return JSON.parse(stdout);
     } catch (e) {
         return [];
     }
@@ -267,7 +270,7 @@ async function manageLabelsInteractive(currentLabels, options = {}) {
     let source = 'unknown';
 
     if (options.useRepo) {
-        availableLabels = getRepoLabels();
+        availableLabels = await getRepoLabels();
         source = 'this repository';
     } else {
         const res = await getLabels();
