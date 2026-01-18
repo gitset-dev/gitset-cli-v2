@@ -111,21 +111,22 @@ function getGitsetKey() {
   return config?.gitset_key || null;
 }
 
-function isBinaryFile(filepath) {
-  const BINARY_EXTENSIONS = [
-    '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.webp',
-    '.mp4', '.mov', '.avi', '.mkv',
-    '.mp3', '.wav', '.ogg',
-    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-    '.zip', '.tar', '.gz', '.7z', '.rar',
-    '.exe', '.dll', '.so', '.dylib', '.bin',
-    '.dat', '.db', '.sqlite',
-    '.eot', '.ttf', '.woff', '.woff2',
-    '.DS_Store'
-  ];
 
+const BINARY_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.webp',
+  '.mp4', '.mov', '.avi', '.mkv',
+  '.mp3', '.wav', '.ogg',
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+  '.zip', '.tar', '.gz', '.7z', '.rar',
+  '.exe', '.dll', '.so', '.dylib', '.bin',
+  '.dat', '.db', '.sqlite',
+  '.eot', '.ttf', '.woff', '.woff2',
+  '.DS_Store'
+]);
+
+function isBinaryFile(filepath) {
   const ext = path.extname(filepath).toLowerCase();
-  if (BINARY_EXTENSIONS.includes(ext)) return true;
+  if (BINARY_EXTENSIONS.has(ext)) return true;
 
   try {
     if (!fs.existsSync(filepath)) return false;
@@ -134,10 +135,7 @@ function isBinaryFile(filepath) {
     const bytesRead = fs.readSync(fd, buffer, 0, 512, 0);
     fs.closeSync(fd);
 
-    for (let i = 0; i < bytesRead; i++) {
-      if (buffer[i] === 0) return true;
-    }
-    return false;
+    return buffer.slice(0, bytesRead).includes(0);
   } catch (err) {
     return false;
   }
