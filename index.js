@@ -111,6 +111,38 @@ function getGitsetKey() {
   return config?.gitset_key || null;
 }
 
+function isBinaryFile(filepath) {
+  const BINARY_EXTENSIONS = [
+    '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.webp',
+    '.mp4', '.mov', '.avi', '.mkv',
+    '.mp3', '.wav', '.ogg',
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+    '.zip', '.tar', '.gz', '.7z', '.rar',
+    '.exe', '.dll', '.so', '.dylib', '.bin',
+    '.dat', '.db', '.sqlite',
+    '.eot', '.ttf', '.woff', '.woff2',
+    '.DS_Store'
+  ];
+
+  const ext = path.extname(filepath).toLowerCase();
+  if (BINARY_EXTENSIONS.includes(ext)) return true;
+
+  try {
+    if (!fs.existsSync(filepath)) return false;
+    const fd = fs.openSync(filepath, 'r');
+    const buffer = Buffer.alloc(512);
+    const bytesRead = fs.readSync(fd, buffer, 0, 512, 0);
+    fs.closeSync(fd);
+
+    for (let i = 0; i < bytesRead; i++) {
+      if (buffer[i] === 0) return true;
+    }
+    return false;
+  } catch (err) {
+    return false;
+  }
+}
+
 function getGitDiff(mode = 'unstaged') {
   let diffOutput = '';
 
@@ -130,6 +162,7 @@ function getGitDiff(mode = 'unstaged') {
     if (untrackedFiles) {
       const files = untrackedFiles.split('\n').filter(Boolean);
       for (const file of files) {
+        if (isBinaryFile(file)) continue;
         try {
           const content = fs.readFileSync(file, 'utf8');
           // Simulate a git diff for a new file
@@ -225,6 +258,10 @@ function prepareChangesData(mode = 'unstaged') {
     let before = '';
     let after = '';
 
+    if (isBinaryFile(file)) {
+      return { file, status, before: '[Binary]', after: '[Binary]' };
+    }
+
     if (status === 'A') {
       after = getCurrentFileContent(file);
     } else if (status === 'D') {
@@ -299,6 +336,14 @@ async function generateCommitMessage(changesData, options = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      log(`✗ Server returned non-JSON response (${response.status})`, 'red');
+      log(`  Response: ${text.substring(0, 200)}${text.length > 200 ? '...' : ''}`, 'yellow');
+      return null;
+    }
 
     const data = await response.json();
 
