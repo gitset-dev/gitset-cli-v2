@@ -1357,6 +1357,15 @@ async function commandPR(options = {}) {
     return;
   }
 
+  // Ensure GH_TOKEN is set for gh CLI commands using our stored token
+  const config = loadConfig();
+  if (config) {
+    const token = config.github_token || config.github_oauth_token;
+    if (token) {
+      process.env.GH_TOKEN = token;
+    }
+  }
+
   log('\n=== Gitset PR Maker ===', 'blue');
 
   // 1. Branch Detection
@@ -1695,11 +1704,12 @@ async function commandIssue(options = {}) {
 
   // Ensure GH_TOKEN is set for gh CLI commands using our stored token
   const config = loadConfig();
-  if (config && config.github_token) {
-    process.env.GH_TOKEN = config.github_token;
-  } else if (config && config.github_oauth_token) {
-    // handling both possible key names just in case, though authenticate saves as github_oauth_token
-    process.env.GH_TOKEN = config.github_oauth_token;
+  if (config) {
+    // The `authenticate` function saves the token as `github_token`. We check `github_oauth_token` as a fallback for robustness.
+    const token = config.github_token || config.github_oauth_token;
+    if (token) {
+      process.env.GH_TOKEN = token;
+    }
   }
 
   if (options.close) {
