@@ -1,0 +1,54 @@
+{
+  "name": "@gitset-dev/cli",
+  "version": "2.0.0",
+  "description": "Gitset CLI — drafts commits, PRs, issues, READMEs and release notes with your own AI key. Fully local: your code and keys never touch a Gitset server. Draft. Refine. Ship.",
+  "type": "commonjs",
+  "bin": {
+    "gitset": "index.js"
+  },
+  "files": [
+    "index.js",
+    "lib/",
+    "!lib/__tests__",
+    "src/"
+  ],
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "sync:ai": "node scripts/sync-ai.js",
+    "test": "node --test lib/__tests__/*.test.js",
+    "start": "node index.js"
+  },
+  "keywords": [
+    "git",
+    "cli",
+    "commit",
+    "ai",
+    "byoai",
+    "github",
+    "automation",
+    "readme-generator",
+    "pull-request",
+    "release-notes"
+  ],
+  "author": "Iván Luna <support@gitset.dev> (https://gitset.dev)",
+  "license": "MPL-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.65.0",
+    "@google/genai": "^2.10.0",
+    "openai": "^6.0.0"
+  },
+  "homepage": "https://gitset.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gitset-dev/gitset-cli-v2.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gitset-dev/gitset-cli-v2/issues"
+  }
+}
