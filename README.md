@@ -33,7 +33,7 @@ nowhere else. It never contacts a Gitset server.
 npm install -g @gitset-dev/cli
 ```
 
-Requires Node.js 18+. Commands that publish to GitHub (`--create`,
+Requires Node.js 20+. Commands that publish to GitHub (`--create`,
 `--apply`) use the [GitHub CLI](https://cli.github.com) (`gh`) with your
 existing login.
 
