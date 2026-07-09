@@ -17,6 +17,8 @@ function showHelp() {
 
 ${theme.bold('First time?')} Run ${theme.accent('gitset config')} — an interactive wizard sets up your AI provider in under a minute.
 
+${theme.bold('Found a bug or have a suggestion?')} Run ${theme.accent('gitset feedback')} anytime.
+
 ${theme.bold('AI commands')} (use your own provider key):
   commit            Generate a commit message from staged changes
   pr                Generate a pull-request description from the branch diff
@@ -35,6 +37,7 @@ ${theme.bold('Local tools')} (no AI):
   status            Show git + provider status
   template          Manage local templates (~/.gitset/templates), edit <tool> to customize
   init              Scaffold local templates
+  feedback          Report a bug, suggest a feature, or share feedback
 
 ${theme.bold('Setup')}:
   config                                interactive setup wizard
@@ -125,6 +128,9 @@ Manage local templates in ~/.gitset/templates.
   path             print the templates directory`,
   init: `Usage: gitset init
 Scaffold the local template directory.`,
+  feedback: `Usage: gitset feedback
+Interactively submit a bug report, feature suggestion, or general feedback.
+Filed as a GitHub issue in gitset-dev/gitset via your own \`gh\` auth.`,
   config: `Usage: gitset config [set|list|remove|theme|path]
   (no args)        interactive setup wizard
   set              interactive wizard, or: set <provider> --key <key> [--model m] [--base-url u] [--default]
@@ -200,6 +206,8 @@ async function main() {
       code = await require('./src/commands/labelspack').runLabelspackCommand(rest); break;
     case 'dependabot':
       code = (await require('./src/commands/dependabot-resolver')(null, rest)) || 0; break;
+    case 'feedback':
+      code = (await require('./src/commands/feedback')()) || 0; break;
 
     case 'auth': case 'verify': case 'logout':
       code = deprecatedAuth(command); break;
