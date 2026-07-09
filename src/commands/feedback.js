@@ -59,6 +59,12 @@ module.exports = async function commandFeedback() {
         { label: 'Quality of Service / General Feedback', value: 'qos' },
     ]);
 
+    let title = '';
+    while (!title) {
+        title = (await askQuestion('Short title for your feedback: ')).slice(0, 120);
+        if (!title) log('A title is required.', 'red');
+    }
+
     const tool = await askQuestion('Which tool or command does this relate to? (optional): ');
 
     let message = '';
@@ -73,11 +79,11 @@ module.exports = async function commandFeedback() {
 
     ensureLabel('user-feedback', 'D4A5A5', 'Submitted via the in-app/CLI feedback tool (issue #20).');
 
-    const title = `[${TYPE_TITLES[type]}] ${message.trim().split('\n')[0].slice(0, 80)}`;
+    const issueTitle = `[${TYPE_TITLES[type]}] ${title}`;
     const body = buildBody(message, tool, version, includeSystemInfo);
     const labels = TYPE_LABELS[type];
 
-    const args = ['issue', 'create', '--repo', REPO, '--title', title, '--body', body];
+    const args = ['issue', 'create', '--repo', REPO, '--title', issueTitle, '--body', body];
     for (const l of labels) args.push('--label', l);
 
     log('\nSubmitting feedback...', 'dim');
