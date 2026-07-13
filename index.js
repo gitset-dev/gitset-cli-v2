@@ -38,6 +38,7 @@ ${theme.bold('Local tools')} (no AI):
   template          Manage local templates (~/.gitset/templates), edit <tool> to customize
   init              Scaffold local templates
   feedback          Report a bug, suggest a feature, or share feedback
+  auth              Check GitHub access, or sync org permissions (auth sync)
 
 ${theme.bold('Setup')}:
   config                                interactive setup wizard
@@ -131,6 +132,12 @@ Scaffold the local template directory.`,
   feedback: `Usage: gitset feedback
 Interactively submit a bug report, feature suggestion, or general feedback.
 Filed as a GitHub issue in gitset-dev/gitset via your own \`gh\` auth.`,
+  auth: `Usage: gitset auth [status|sync]
+  status (default)  show your GitHub CLI auth status and access guidance
+  sync              re-run GitHub authorization to approve additional
+                    organizations or scopes (wraps \`gh auth refresh\`)
+Gitset uses your own gh authentication locally — there is no Gitset account.
+Web app permissions: gitset.dev/dashboard → GitHub connection.`,
   config: `Usage: gitset config [set|list|remove|theme|path]
   (no args)        interactive setup wizard
   set              interactive wizard, or: set <provider> --key <key> [--model m] [--base-url u] [--default]
@@ -209,7 +216,10 @@ async function main() {
     case 'feedback':
       code = (await require('./src/commands/feedback')()) || 0; break;
 
-    case 'auth': case 'verify': case 'logout':
+    case 'auth':
+      code = require('./src/commands/auth')(rest) || 0; break;
+
+    case 'verify': case 'logout':
       code = deprecatedAuth(command); break;
 
     case 'help': case '--help': case '-h': case undefined:
