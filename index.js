@@ -116,7 +116,9 @@ Manage & apply a label pack (local pack + gh).
   --apply          create/update the labels in the current repo via gh
   --init           write the default pack to ~/.gitset/labels.md
   --add --name <x> --color <hex> --description "..."   add a label
-  --sync           pull the repo's labels into the local pack`,
+  --from-repo      import the current repo's labels (name, color,
+                   description) into the pack; --yes to overwrite
+                   without asking (--sync is an alias)`,
   dependabot: `Usage: gitset dependabot [--resolve] [--dry-run] [--save-dev]
 Resolve Dependabot alerts for the current repo (local + gh).`,
   status: `Usage: gitset status

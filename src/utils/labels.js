@@ -96,7 +96,13 @@ function getRepoLabels() {
   }
 }
 
+function writePack(labels) {
+  fs.mkdirSync(DIR, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(LABELS_FILE, serializePack(labels));
+  return LABELS_FILE;
+}
+
 module.exports = {
   LABELS_FILE, DEFAULT_LABELS,
-  getLabels, addLabel, writeDefaultPack, getRepoLabels, parseLabelsYaml,
+  getLabels, addLabel, writeDefaultPack, writePack, getRepoLabels, parseLabelsYaml,
 };

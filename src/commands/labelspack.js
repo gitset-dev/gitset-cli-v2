@@ -4,14 +4,15 @@
  * `gitset labelspack` — manage & apply a label pack. Local pack +
  * the user's `gh` CLI only. No backend, injection-safe (arg-array exec).
  *
- *   gitset labelspack            list the pack
- *   gitset labelspack --apply    create/update those labels in the repo via gh
- *   gitset labelspack --init     write the default pack to ~/.gitset/labels.md
+ *   gitset labelspack             list the pack
+ *   gitset labelspack --apply     create/update those labels in the repo via gh
+ *   gitset labelspack --init      write the default pack to ~/.gitset/labels.md
+ *   gitset labelspack --from-repo import the current repo's labels into the pack
  *   gitset labelspack --add --name x --color hex --description "..."
  */
 const { execFileSync } = require('child_process');
 const readline = require('readline');
-const { getLabels, addLabel, writeDefaultPack, getRepoLabels } = require('../utils/labels');
+const { getLabels, addLabel, writeDefaultPack, writePack, getRepoLabels } = require('../utils/labels');
 
 const tty = () => process.stdout.isTTY;
 const c = (code, s) => (tty() ? `\x1b[${code}m${s}\x1b[0m` : s);
@@ -35,6 +36,36 @@ async function runLabelspackCommand(argv) {
     return 0;
   }
 
+  if (argv.includes('--from-repo') || argv.includes('--sync')) {
+    if (!ghAvailable()) {
+      console.error(`${c('31', '✗')} GitHub CLI \`gh\` not found / not authenticated.`);
+      return 1;
+    }
+    const repoLabels = getRepoLabels();
+    if (repoLabels.length === 0) {
+      console.error(`${c('31', '✗')} No labels found — run this inside a repository your \`gh\` account can access.`);
+      return 1;
+    }
+    const { source, labels: current } = getLabels();
+    if (source.startsWith('local') && !argv.includes('--yes') && !argv.includes('-y')) {
+      if (!process.stdin.isTTY) {
+        console.error(`${c('31', '✗')} A label pack already exists (${current.length} labels). Pass --yes to overwrite.`);
+        return 1;
+      }
+      const ok = (await ask(`Overwrite your existing pack (${current.length} labels) with ${repoLabels.length} labels from this repo? [y/N] `)).toLowerCase();
+      if (ok !== 'y') { console.log('Aborted.'); return 0; }
+    }
+    const imported = repoLabels.map((l) => ({
+      name: l.name,
+      color: String(l.color || '').replace('#', ''),
+      description: l.description || '',
+    }));
+    const f = writePack(imported);
+    console.log(`${c('32', '✓')} Imported ${imported.length} labels from this repository → ${f}`);
+    console.log(c('90', 'Apply them to any other repo:  cd <repo> && gitset labelspack --apply'));
+    return 0;
+  }
+
   if (argv.includes('--add')) {
     let name = flag(argv, '--name');
     let color = flag(argv, '--color');
@@ -53,7 +84,7 @@ async function runLabelspackCommand(argv) {
 
   const { source, labels } = getLabels();
 
-  if (!argv.includes('--apply') && !argv.includes('--sync')) {
+  if (!argv.includes('--apply')) {
     console.log(c('1', `\nLabel pack (${source}) — ${labels.length} labels\n`));
     for (const l of labels) {
       console.log(`  ${c('36', l.name)}${l.description ? `  ${c('90', l.description)}` : ''}`);
