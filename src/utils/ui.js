@@ -73,29 +73,31 @@ function askSecret(query) {
             stdin.pause();
         }
         function onData(chunk) {
-            const ch = String(chunk);
-            if (ch === '\r' || ch === '\n') {
-                cleanup();
-                process.stdout.write('\n');
-                resolve(value.trim());
-                return;
-            }
-            if (ch === '\u0003') { // Ctrl+C
-                cleanup();
-                process.stdout.write('\n');
-                reject(new Error('Cancelled.'));
-                return;
-            }
-            if (ch === '\u007f' || ch === '\b') { // backspace (DEL on most terminals, BS on some)
-                if (value.length) {
-                    value = value.slice(0, -1);
-                    process.stdout.write('\b \b');
+            const cleaned = String(chunk).replace(/\x1b\[[0-9;]*[a-zA-Z~]/g, '');
+            for (const c of cleaned) {
+                if (c === '\r' || c === '\n') {
+                    cleanup();
+                    process.stdout.write('\n');
+                    resolve(value.trim());
+                    return;
                 }
-                return;
+                if (c === '\u0003') { // Ctrl+C
+                    cleanup();
+                    process.stdout.write('\n');
+                    reject(new Error('Cancelled.'));
+                    return;
+                }
+                if (c === '\u007f' || c === '\b') { // backspace (DEL on most terminals, BS on some)
+                    if (value.length) {
+                        value = value.slice(0, -1);
+                        process.stdout.write('\b \b');
+                    }
+                    continue;
+                }
+                if (c.charCodeAt(0) < 32) continue; // ignore other control bytes
+                value += c;
+                process.stdout.write('*');
             }
-            if (ch.charCodeAt(0) < 32) return; // ignore other control/escape bytes
-            value += ch;
-            process.stdout.write('*');
         }
         stdin.on('data', onData);
     });
