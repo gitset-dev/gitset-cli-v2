@@ -33,6 +33,13 @@ function getCurrentBranch() {
     return execCommand('git rev-parse --abbrev-ref HEAD') || 'HEAD';
 }
 
+function getRepoOwnerName() {
+    const remoteUrl = execCommand('git config --get remote.origin.url');
+    if (!remoteUrl) return '';
+    const match = remoteUrl.match(/[:/]([^/]+)\/([^/.]+)(?:\.git)?$/);
+    return match ? `${match[1]}/${match[2]}` : '';
+}
+
 function commitsToText(commits) {
     if (!commits || commits.length === 0) return '';
     return commits.map(c => `- ${c.hash || ''} ${c.message || ''} (${c.author || ''})`).join('\n');
@@ -185,6 +192,7 @@ module.exports = async function commandRelease(options = {}) {
     }
 
     let currentNotes = '';
+    const repo = getRepoOwnerName();
 
     const generate = async (instr = '') => {
         log('\nGenerating release notes…', 'cyan');
@@ -193,6 +201,7 @@ module.exports = async function commandRelease(options = {}) {
                 tool: 'release',
                 ctx: {
                     tag: tagName,
+                    repo,
                     commits: commitsToText(commits),
                     mode: commits.length === 0 ? 'manual' : 'summary',
                     instruction: instr,
