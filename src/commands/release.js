@@ -4,6 +4,7 @@ const path = require('path');
 const os = require('os');
 const { log, askQuestion, selectOption } = require('../utils/ui');
 const genLocal = require('../../lib/generate-local');
+const manifestLib = require('../../lib/manifest');
 
 function execCommand(cmd) {
     try {
@@ -35,6 +36,90 @@ function getCurrentBranch() {
 function commitsToText(commits) {
     if (!commits || commits.length === 0) return '';
     return commits.map(c => `- ${c.hash || ''} ${c.message || ''} (${c.author || ''})`).join('\n');
+}
+
+async function syncManifestVersion(tagName) {
+    const newVersion = manifestLib.normalizeVersion(tagName);
+    if (!newVersion) return;
+
+    let fileNames;
+    try {
+        fileNames = fs.readdirSync(process.cwd());
+    } catch {
+        return;
+    }
+
+    const found = manifestLib.detectManifestFile(fileNames);
+    if (!found) return;
+
+    const filePath = path.join(process.cwd(), found.file);
+    let content;
+    try {
+        content = fs.readFileSync(filePath, 'utf8');
+    } catch {
+        return;
+    }
+
+    let oldVersion;
+    try {
+        oldVersion = manifestLib.readVersion(found.type, content);
+    } catch (err) {
+        log(`\nCould not parse ${found.file}, skipping version sync (${err.message}).`, 'yellow');
+        return;
+    }
+
+    if (!oldVersion) {
+        log(`\n${found.file} has no static top-level version field, skipping version sync.`, 'dim');
+        return;
+    }
+
+    if (oldVersion === newVersion) return;
+
+    let newContent;
+    try {
+        newContent = manifestLib.bumpVersion(found.type, content, newVersion);
+    } catch (err) {
+        log(`\nCould not bump ${found.file}, skipping version sync (${err.message}).`, 'yellow');
+        return;
+    }
+    if (!newContent) return;
+
+    log(`\n${found.file} version differs from this release:`, 'cyan');
+    log(`  - version: ${oldVersion}`, 'red');
+    log(`  + version: ${newVersion}`, 'green');
+    log('  Only the top-level version field changes — dependency versions are left untouched.', 'dim');
+
+    const bumpChoice = await selectOption(`Update ${found.file} to ${newVersion} as part of this release?`, [
+        { label: `Yes, update ${found.file}`, value: 'yes' },
+        { label: 'No, skip', value: 'no' },
+    ]);
+    if (bumpChoice !== 'yes') return;
+
+    try {
+        fs.writeFileSync(filePath, newContent);
+        execFileSync('git', ['add', found.file], { stdio: 'pipe' });
+        execFileSync('git', ['commit', '-m', `chore: bump version to ${newVersion}`], { stdio: 'pipe' });
+        log(`Committed: chore: bump version to ${newVersion}`, 'green');
+    } catch (err) {
+        log(`Failed to commit the version bump: ${err.message}`, 'red');
+        return;
+    }
+
+    log('\nThis commit needs to be pushed before creating the release, otherwise the release tag will not include it.', 'dim');
+    const pushChoice = await selectOption('Push this commit now?', [
+        { label: 'Yes, push', value: 'yes' },
+        { label: 'No, I\'ll push it myself', value: 'no' },
+    ]);
+    if (pushChoice === 'yes') {
+        try {
+            execFileSync('git', ['push'], { stdio: 'inherit' });
+            log('Pushed.', 'green');
+        } catch {
+            log('Failed to push. Push manually before the release tag will reflect this version.', 'red');
+        }
+    } else {
+        log('Not pushed — the release tag will not include this version bump until you push it.', 'yellow');
+    }
 }
 
 module.exports = async function commandRelease(options = {}) {
@@ -163,7 +248,10 @@ module.exports = async function commandRelease(options = {}) {
             const notesFile = 'RELEASE_NOTES.md';
             fs.writeFileSync(notesFile, currentNotes);
             log(`Saved notes to ${notesFile}`, 'dim');
-            log('Creating release via gh CLI…', 'cyan');
+
+            await syncManifestVersion(tagName);
+
+            log('\nCreating release via gh CLI…', 'cyan');
             try {
                 execFileSync('gh', ['release', 'create', tagName, '--title', tagName, '--notes-file', notesFile], { stdio: 'inherit' });
                 log('\nRelease created successfully!', 'green');

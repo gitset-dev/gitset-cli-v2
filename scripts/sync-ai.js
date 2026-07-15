@@ -18,7 +18,7 @@ const path = require('path');
 
 const CORE = path.resolve(__dirname, '..', '..', 'gitset-core-v2', 'lib');
 const DEST = path.resolve(__dirname, '..', 'lib');
-const MODULES = ['ai', 'prompts'];
+const MODULES = ['ai', 'prompts', 'manifest'];
 
 const SKIP_DIRS = new Set(['__tests__', 'node_modules', 'private']);
 
