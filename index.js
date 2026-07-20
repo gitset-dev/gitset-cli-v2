@@ -27,6 +27,7 @@ ${theme.bold('AI commands')} (use your own provider key):
   release           Generate release notes from the commit range
   gitignore         Generate a .gitignore for the detected stack
   repo about        AI repo description + topics, applied via gh
+  knowledge         Build an agent-ready knowledge base from your source code
 
 ${theme.bold('Local tools')} (no AI):
   repo license      Generate a LICENSE file (offline)
@@ -121,6 +122,22 @@ Manage & apply a label pack (local pack + gh).
                    without asking (--sync is an alias)`,
   dependabot: `Usage: gitset dependabot [--resolve] [--dry-run] [--save-dev]
 Resolve Dependabot alerts for the current repo (local + gh).`,
+  knowledge: `Usage: gitset knowledge <init|scan|generate|update|automate> [flags]
+Build and maintain docs/gitset-knowledge/ — an agent-ready knowledge base
+derived from your source code, manifests and CI config (never from existing
+prose docs, so it can't inherit their drift). Secrets are redacted locally
+before anything reaches your AI provider.
+  init             scaffold .gitset-knowledge.json (optional scan config)
+  scan             structural pass: zero AI calls, prints plan + cost estimate
+  generate         full run (always shows the estimate and asks first)
+  update           incremental: re-summarizes only changed modules
+  automate         write a GitHub Actions workflow that runs update in CI
+                   and opens a PR when docs change (always asks first)
+  --since <ref>    update selector via git diff instead of content hashes
+  --mode <m>       automate trigger: push | releases | weekly
+  --provider <p>   override the default provider for this run
+  --model <m>      override the model
+  --yes            skip confirmations (CI)`,
   status: `Usage: gitset status
 Show git + configured-provider status.`,
   template: `Usage: gitset template <list|show|edit|path>
@@ -213,6 +230,8 @@ async function main() {
       code = await require('./src/commands/license').runLicenseCommand(rest); break;
     case 'labelspack':
       code = await require('./src/commands/labelspack').runLabelspackCommand(rest); break;
+    case 'knowledge':
+      code = await require('./src/commands/knowledge').runKnowledgeCommand(rest); break;
     case 'dependabot':
       code = (await require('./src/commands/dependabot-resolver')(null, rest)) || 0; break;
     case 'feedback':
