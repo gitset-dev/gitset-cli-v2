@@ -101,7 +101,7 @@ gitset knowledge init       # scaffold optional .gitset-knowledge.json (include/
 gitset knowledge scan       # zero AI calls — discovers files, prints the plan + exact cost estimate
 gitset knowledge generate   # shows the estimate again, asks to confirm, then writes the knowledge base
 gitset knowledge update     # incremental — only changed modules (and their direct importers) are re-summarized
-gitset knowledge automate   # writes a GitHub Actions workflow that runs `update` in CI and opens a review PR
+gitset knowledge automate   # writes a GitHub Actions workflow that keeps it fresh in CI (direct commits, or PRs with --sync pr)
 ```
 
 It's a six-stage local pipeline (Discover → Map → Summarize → Plan → Write →
@@ -113,22 +113,22 @@ generated link, command, and script before anything is written to disk.
 Secrets are redacted locally before any file content is sent, and prose
 docs / test file bodies are listed structurally but never sent at all.
 
-`gitset knowledge automate` needs "Allow GitHub Actions to create and
-approve pull requests" enabled (**Settings > Actions > General > Workflow
-permissions**) for the update PR to open. It detects this automatically and
-offers to enable it via the GitHub API — asked first, like everything else
-in this command. If you decline, or the API call fails (no admin access, an
-org policy locking the setting), the scheduled update still runs and
-commits safely; only the review-PR step fails, and the workflow run shows
-that failure clearly rather than hide it.
+`gitset knowledge automate` applies updates in one of two ways, and you
+never touch a GitHub settings page for either:
 
-Some organizations enforce that setting off with no repo-level override at
-all — the checkbox greys out even on the org's own settings page. For that
-case, add a repository secret named `GITSET_PR_TOKEN` with a personal
-access token (classic: `repo` scope; fine-grained: Pull requests write).
-It's not subject to that organization-wide Actions restriction, and the
-generated workflow picks it up automatically — no need to re-run `automate`
-or touch the workflow file.
+- **Direct commit (the default).** CI commits refreshed docs straight to
+  your default branch using only the built-in Actions token — works on
+  every repository and organization, zero extra permissions or tokens,
+  and it can't re-trigger itself.
+- **Review pull request (`--sync pr`).** Each update arrives as a PR on
+  the `gitset/knowledge-update` branch. Its one prerequisite is set up
+  for you: the CLI first tries enabling the repo's Actions PR permission
+  via the API; if your organization blocks that, it offers to store a
+  token from your existing `gh` login as the `GITSET_PR_TOKEN` secret —
+  explained in plain language before asking, reversible anytime by
+  deleting the secret. If neither works out, updates still commit and
+  push their branch safely; only the PR step fails, and the workflow run
+  shows that failure clearly rather than hide it.
 
 ## Templates
 
