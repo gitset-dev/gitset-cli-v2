@@ -132,9 +132,11 @@ before anything reaches your AI provider.
   generate         full run (always shows the estimate and asks first)
   update           incremental: re-summarizes only changed modules
   automate         write a GitHub Actions workflow that runs update in CI
-                   and opens a PR when docs change (always asks first)
+                   (commits directly by default; --sync pr for review PRs,
+                   with the required access set up for you — always asks first)
   --since <ref>    update selector via git diff instead of content hashes
   --mode <m>       automate trigger: push | releases | weekly
+  --sync <s>       automate apply style: commit (default) | pr
   --provider <p>   override the default provider for this run
   --model <m>      override the model
   --yes            skip confirmations (CI)`,

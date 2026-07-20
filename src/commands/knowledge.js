@@ -521,9 +521,63 @@ async function ensurePrPermission(repo, argv) {
     return 'enabled';
   } catch {
     log('Could not change it automatically — you may not have admin access on this repo, or an organization policy locks this setting (if it appears greyed out in the GitHub UI at both the repo and org level, that\'s a hard enforcement you cannot toggle either way).', 'yellow');
-    log('Workaround: add a repository secret named GITSET_PR_TOKEN with a personal access token (repo scope). It is not subject to the organization\'s Actions PR-creation restriction, and the workflow picks it up automatically — no need to re-run automate.', 'dim');
     return 'failed';
   }
+}
+
+async function provisionPrToken(repo, argv) {
+  if (!repo.includes('/')) return 'unavailable';
+
+  const existing = (() => {
+    try {
+      const out = execFileSync('gh', ['secret', 'list', '--repo', repo], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      return out.includes('GITSET_PR_TOKEN');
+    } catch {
+      return false;
+    }
+  })();
+  if (existing) {
+    log('The GITSET_PR_TOKEN secret already exists in this repository — PR mode is ready.', 'green');
+    return 'already-provisioned';
+  }
+
+  log('\nNo problem — this can be fixed right now, automatically:', 'cyan');
+  log('  Your repository (or its organization) blocks the built-in CI token from opening pull requests.', 'reset');
+  log('  The fix: store a token from YOUR current GitHub login (the same one the gh CLI already uses) as an encrypted secret named GITSET_PR_TOKEN in this repository.', 'reset');
+  log('  · You don\'t create anything manually — no settings pages, no token forms.', 'dim');
+  log('  · The token is stored encrypted by GitHub, in this repository only.', 'dim');
+  log('  · CI will open pull requests as you, which your organization does allow.', 'dim');
+  log('  · Undo anytime: delete the GITSET_PR_TOKEN secret and CI falls back to the built-in token.', 'dim');
+
+  const proceed = await confirmOrAbort('\nStore it now?', argv);
+  if (!proceed) return 'declined';
+
+  let token = '';
+  try {
+    token = execFileSync('gh', ['auth', 'token'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {  }
+  if (!token) {
+    log('Could not read a token from your gh login. Run "gh auth login" first, then re-run: gitset knowledge automate', 'red');
+    return 'failed';
+  }
+
+  try {
+    execFileSync('gh', ['secret', 'set', 'GITSET_PR_TOKEN', '--repo', repo], { input: token, stdio: ['pipe', 'pipe', 'pipe'] });
+  } catch {
+    log('Could not store the secret (you may not have admin access on this repository).', 'red');
+    return 'failed';
+  }
+
+  try {
+    const out = execFileSync('gh', ['secret', 'list', '--repo', repo], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    if (!out.includes('GITSET_PR_TOKEN')) throw new Error('not visible');
+  } catch {
+    log('The secret was sent but could not be verified — check https://github.com/' + repo + '/settings/secrets/actions', 'yellow');
+    return 'unverified';
+  }
+
+  log('Done — GITSET_PR_TOKEN is stored. CI can now open pull requests, starting with the very next run.', 'green');
+  return 'provisioned';
 }
 
 async function runAutomate(rootDir, argv) {
@@ -566,8 +620,44 @@ async function runAutomate(rootDir, argv) {
     return 1;
   }
 
+  const repo = repoLabel(rootDir);
+
+  let syncMode = flag(argv, '--sync');
+  if (!syncMode) {
+    if (!process.stdin.isTTY || argv.includes('--yes') || argv.includes('-y')) {
+      syncMode = 'commit';
+    } else {
+      syncMode = await selectOption('How should CI apply each update?', [
+        { label: `Commit directly to ${defaultBranch} (recommended — zero setup, works on every repo and org)`, value: 'commit' },
+        { label: 'Open a review pull request for each update (one extra one-time step — automated for you)', value: 'pr' },
+        { label: 'Cancel', value: 'cancel' },
+      ]);
+      if (syncMode === 'cancel') {
+        log('Nothing written.', 'yellow');
+        return 0;
+      }
+    }
+  }
+  if (!km.SYNC_MODES[syncMode]) {
+    log(`Unknown sync mode "${syncMode}". One of: ${Object.keys(km.SYNC_MODES).join(', ')}`, 'red');
+    return 1;
+  }
+
+  let prReady = null;
+  if (syncMode === 'pr') {
+    const prPermission = await ensurePrPermission(repo, argv);
+    if (prPermission === 'enabled' || prPermission === 'already-enabled') {
+      prReady = 'permission';
+    } else {
+      const patStatus = await provisionPrToken(repo, argv);
+      if (patStatus === 'provisioned' || patStatus === 'already-provisioned') prReady = 'token';
+      else if (patStatus === 'unverified') prReady = 'token-unverified';
+    }
+  }
+
   const yaml = km.buildKnowledgeWorkflow({
     mode,
+    syncMode,
     provider: cfg.provider,
     envKey,
     model: cfg.model || null,
@@ -591,9 +681,6 @@ async function runAutomate(rootDir, argv) {
   fs.writeFileSync(target, yaml);
   log(`\nWrote ${km.WORKFLOW_PATH}.`, 'green');
 
-  const repo = repoLabel(rootDir);
-  const prPermission = await ensurePrPermission(repo, argv);
-
   log('\nNext steps:', 'cyan');
   log(`  1. Add the repository secret ${envKey} with your ${cfg.provider} API key:`, 'reset');
   if (repo.includes('/')) {
@@ -601,23 +688,24 @@ async function runAutomate(rootDir, argv) {
   } else {
     log('     GitHub repo > Settings > Secrets and variables > Actions', 'dim');
   }
-  if (prPermission === 'enabled' || prPermission === 'already-enabled') {
-    log('  2. "Allow GitHub Actions to create and approve pull requests" is already on — the update PR step is ready.', 'reset');
+  log('  2. Make sure the knowledge base itself is committed (gitset knowledge generate, then commit docs/gitset-knowledge/ and AGENTS.md).', 'reset');
+  log('  3. Commit and push the workflow file.', 'reset');
+
+  if (syncMode === 'commit') {
+    log(`\nThat's it — CI will commit refreshed docs straight to ${defaultBranch} whenever mapped source changes. No permissions to touch, no tokens to create, and runs with no mapped changes make zero AI calls.`, 'dim');
+    log('Prefer reviewing each update as a pull request instead? Re-run: gitset knowledge automate --sync pr', 'dim');
   } else {
-    log('  2. Enable "Allow GitHub Actions to create and approve pull requests" (required for the update PR):', 'reset');
-    if (repo.includes('/')) {
-      log(`     https://github.com/${repo}/settings/actions`, 'dim');
+    if (prReady === 'permission') {
+      log('\nPR mode is ready: GitHub Actions is allowed to open pull requests in this repository.', 'dim');
+    } else if (prReady === 'token') {
+      log('\nPR mode is ready: CI will open pull requests using the GITSET_PR_TOKEN secret that was just stored.', 'dim');
+    } else if (prReady === 'token-unverified') {
+      log(`\nPR mode should be ready, but the stored secret could not be verified — double-check https://github.com/${repo}/settings/secrets/actions`, 'yellow');
     } else {
-      log('     GitHub repo > Settings > Actions > General > Workflow permissions', 'dim');
+      log('\nPR mode is NOT ready yet: CI cannot open pull requests in this repository until one of the fixes above is applied. Updates will still commit and push their branch safely — only the PR step will fail, visibly. Re-run "gitset knowledge automate" anytime to finish the setup, or switch to zero-setup direct commits with: gitset knowledge automate --sync commit', 'yellow');
     }
-    log('     Without this, the update still runs and commits safely — only opening the review PR fails, and the workflow run will show that failure clearly rather than hide it.', 'dim');
-    if (prPermission === 'failed') {
-      log('     If that checkbox is greyed out even at the organization level, it is enforced off and cannot be toggled: add a repository secret named GITSET_PR_TOKEN with a personal access token (repo scope) instead — the workflow uses it automatically, no changes needed.', 'dim');
-    }
+    log('When mapped source changes land, CI opens a PR on branch gitset/knowledge-update — you review it like any docs change. Runs with no mapped changes make zero AI calls.', 'dim');
   }
-  log('  3. Make sure the knowledge base itself is committed (gitset knowledge generate, then commit docs/gitset-knowledge/ and AGENTS.md).', 'reset');
-  log('  4. Commit and push the workflow file.', 'reset');
-  log('\nWhen mapped source changes land, CI opens a PR on branch gitset/knowledge-update — you review it like any docs change. Runs with no mapped changes make zero AI calls.', 'dim');
   return 0;
 }
 
@@ -648,7 +736,8 @@ async function runKnowledgeCommand(argv = []) {
       log('  generate   build docs/gitset-knowledge/ from source code (asks before spending)', 'dim');
       log('  update     incremental refresh: only changed modules are re-summarized', 'dim');
       log('  automate   write a CI workflow that keeps it fresh (always asks first)', 'dim');
-      log('  flags      --provider <p> --model <m> --yes --since <ref> (update) --mode <push|releases|weekly> (automate)', 'dim');
+      log('  flags      --provider <p> --model <m> --yes --since <ref> (update)', 'dim');
+      log('             --mode <push|releases|weekly> --sync <commit|pr> (automate)', 'dim');
       return verb ? 1 : 0;
   }
 }
