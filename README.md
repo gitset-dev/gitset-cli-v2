@@ -122,6 +122,14 @@ org policy locking the setting), the scheduled update still runs and
 commits safely; only the review-PR step fails, and the workflow run shows
 that failure clearly rather than hide it.
 
+Some organizations enforce that setting off with no repo-level override at
+all — the checkbox greys out even on the org's own settings page. For that
+case, add a repository secret named `GITSET_PR_TOKEN` with a personal
+access token (classic: `repo` scope; fine-grained: Pull requests write).
+It's not subject to that organization-wide Actions restriction, and the
+generated workflow picks it up automatically — no need to re-run `automate`
+or touch the workflow file.
+
 ## Templates
 
 Define your commit style, issue structure, PR format, README skeleton, or
