@@ -114,10 +114,13 @@ Secrets are redacted locally before any file content is sent, and prose
 docs / test file bodies are listed structurally but never sent at all.
 
 `gitset knowledge automate` needs "Allow GitHub Actions to create and
-approve pull requests" enabled under the repo's **Settings > Actions >
-General > Workflow permissions** — without it, the scheduled update still
-runs and commits safely, but the review-PR step fails, and the workflow run
-will show that failure clearly rather than hide it.
+approve pull requests" enabled (**Settings > Actions > General > Workflow
+permissions**) for the update PR to open. It detects this automatically and
+offers to enable it via the GitHub API — asked first, like everything else
+in this command. If you decline, or the API call fails (no admin access, an
+org policy locking the setting), the scheduled update still runs and
+commits safely; only the review-PR step fails, and the workflow run shows
+that failure clearly rather than hide it.
 
 ## Templates
 
