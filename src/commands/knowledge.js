@@ -520,7 +520,8 @@ async function ensurePrPermission(repo, argv) {
     log('Enabled — CI will be able to open the review PR.', 'green');
     return 'enabled';
   } catch {
-    log('Could not change it automatically (you may not have admin access on this repo, or an organization policy may lock this setting).', 'yellow');
+    log('Could not change it automatically — you may not have admin access on this repo, or an organization policy locks this setting (if it appears greyed out in the GitHub UI at both the repo and org level, that\'s a hard enforcement you cannot toggle either way).', 'yellow');
+    log('Workaround: add a repository secret named GITSET_PR_TOKEN with a personal access token (repo scope). It is not subject to the organization\'s Actions PR-creation restriction, and the workflow picks it up automatically — no need to re-run automate.', 'dim');
     return 'failed';
   }
 }
@@ -610,6 +611,9 @@ async function runAutomate(rootDir, argv) {
       log('     GitHub repo > Settings > Actions > General > Workflow permissions', 'dim');
     }
     log('     Without this, the update still runs and commits safely — only opening the review PR fails, and the workflow run will show that failure clearly rather than hide it.', 'dim');
+    if (prPermission === 'failed') {
+      log('     If that checkbox is greyed out even at the organization level, it is enforced off and cannot be toggled: add a repository secret named GITSET_PR_TOKEN with a personal access token (repo scope) instead — the workflow uses it automatically, no changes needed.', 'dim');
+    }
   }
   log('  3. Make sure the knowledge base itself is committed (gitset knowledge generate, then commit docs/gitset-knowledge/ and AGENTS.md).', 'reset');
   log('  4. Commit and push the workflow file.', 'reset');
