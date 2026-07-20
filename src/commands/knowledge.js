@@ -125,6 +125,12 @@ async function confirmOrAbort(question, argv) {
   return answer === 'y' || answer === 'yes';
 }
 
+function appendModuleEntries(moduleSummaries, moduleName, entries) {
+  const prev = moduleSummaries[moduleName];
+  const prevArray = Array.isArray(prev) ? prev : [];
+  moduleSummaries[moduleName] = [...prevArray, ...entries];
+}
+
 async function summarizeBatches({ batches, repo, argv, cachedSummaries = {}, usage }) {
   const moduleSummaries = { ...cachedSummaries };
   let providerUsed = null;
@@ -133,7 +139,7 @@ async function summarizeBatches({ batches, repo, argv, cachedSummaries = {}, usa
   for (const batch of batches) {
     done += 1;
     log(`  [${done}/${batches.length}] Summarizing ${batch.module}${batch.part > 1 ? ` (part ${batch.part})` : ''}…`, 'dim');
-    const result = await genLocal.generate({
+    const summarizeBatch = (temperature) => genLocal.generate({
       tool: 'knowledgeSummarize',
       ctx: {
         repo,
@@ -143,19 +149,37 @@ async function summarizeBatches({ batches, repo, argv, cachedSummaries = {}, usa
       provider: flag(argv, '--provider'),
       model: flag(argv, '--model'),
       maxTokens: km.DEFAULTS.summarizeMaxTokens,
-      temperature: 0.2,
+      temperature,
       interactive: true,
     });
+
+    let result = await summarizeBatch(0.2);
+    trackUsage(usage, result);
     providerUsed = result.provider;
     modelUsed = result.model;
-    trackUsage(usage, result);
-    const entries = km.parseSummarizeResponse(result.raw);
-    const prev = moduleSummaries[batch.module];
+    let entries = km.parseSummarizeResponse(result.raw);
+
+    if (!entries) {
+      log(`    Structured parse failed for ${batch.module}${batch.part > 1 ? ` (part ${batch.part})` : ''}; retrying once…`, 'yellow');
+      result = await summarizeBatch(0.5);
+      trackUsage(usage, result);
+      providerUsed = result.provider;
+      modelUsed = result.model;
+      entries = km.parseSummarizeResponse(result.raw);
+    }
+
     if (entries) {
-      moduleSummaries[batch.module] = Array.isArray(prev) ? [...prev, ...entries] : entries;
+      appendModuleEntries(moduleSummaries, batch.module, entries);
     } else {
-      log(`    Structured parse failed for ${batch.module}; keeping raw summary text.`, 'yellow');
-      moduleSummaries[batch.module] = typeof prev === 'string' ? `${prev}\n${result.text}` : result.text;
+      log(`    Still unparseable after retry; recording ${batch.files.length} file(s) as summary-unavailable (no data lost for the rest of the module).`, 'yellow');
+      const placeholders = batch.files.map((f) => ({
+        path: f.path,
+        purpose: '(AI summary unavailable — the model\'s response for this batch could not be parsed after a retry)',
+        exports: [],
+        dependencies: [],
+        notes: '',
+      }));
+      appendModuleEntries(moduleSummaries, batch.module, placeholders);
     }
   }
   return { moduleSummaries, providerUsed, modelUsed };
@@ -541,8 +565,15 @@ async function runAutomate(rootDir, argv) {
   } else {
     log('     GitHub repo > Settings > Secrets and variables > Actions', 'dim');
   }
-  log('  2. Make sure the knowledge base itself is committed (gitset knowledge generate, then commit docs/gitset-knowledge/ and AGENTS.md).', 'reset');
-  log('  3. Commit and push the workflow file.', 'reset');
+  log('  2. Enable "Allow GitHub Actions to create and approve pull requests" (required for the update PR):', 'reset');
+  if (repo.includes('/')) {
+    log(`     https://github.com/${repo}/settings/actions`, 'dim');
+  } else {
+    log('     GitHub repo > Settings > Actions > General > Workflow permissions', 'dim');
+  }
+  log('     Without this, the update still runs and commits safely — only opening the review PR fails, and the workflow run will show that failure clearly rather than hide it.', 'dim');
+  log('  3. Make sure the knowledge base itself is committed (gitset knowledge generate, then commit docs/gitset-knowledge/ and AGENTS.md).', 'reset');
+  log('  4. Commit and push the workflow file.', 'reset');
   log('\nWhen mapped source changes land, CI opens a PR on branch gitset/knowledge-update — you review it like any docs change. Runs with no mapped changes make zero AI calls.', 'dim');
   return 0;
 }
