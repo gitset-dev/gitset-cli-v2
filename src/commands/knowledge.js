@@ -492,6 +492,39 @@ async function runUpdate(rootDir, argv) {
   }
 }
 
+function ghApiJson(args) {
+  try {
+    const out = execFileSync('gh', ['api', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    return JSON.parse(out);
+  } catch {
+    return null;
+  }
+}
+
+async function ensurePrPermission(repo, argv) {
+  if (!repo.includes('/')) return 'unknown';
+  const current = ghApiJson([`/repos/${repo}/actions/permissions/workflow`]);
+  if (!current) return 'unknown';
+  if (current.can_approve_pull_request_reviews) return 'already-enabled';
+
+  log('\n"Allow GitHub Actions to create and approve pull requests" is currently OFF for this repository. The update step will still run and commit safely without it — only opening the review PR will fail.', 'yellow');
+  const proceed = await confirmOrAbort('Enable it now via the GitHub API? (only this one setting changes)', argv);
+  if (!proceed) return 'declined';
+
+  try {
+    execFileSync('gh', [
+      'api', '--method', 'PUT', `/repos/${repo}/actions/permissions/workflow`,
+      '-f', `default_workflow_permissions=${current.default_workflow_permissions}`,
+      '-F', 'can_approve_pull_request_reviews=true',
+    ], { stdio: 'pipe' });
+    log('Enabled — CI will be able to open the review PR.', 'green');
+    return 'enabled';
+  } catch {
+    log('Could not change it automatically (you may not have admin access on this repo, or an organization policy may lock this setting).', 'yellow');
+    return 'failed';
+  }
+}
+
 async function runAutomate(rootDir, argv) {
   let cfg;
   try {
@@ -558,6 +591,8 @@ async function runAutomate(rootDir, argv) {
   log(`\nWrote ${km.WORKFLOW_PATH}.`, 'green');
 
   const repo = repoLabel(rootDir);
+  const prPermission = await ensurePrPermission(repo, argv);
+
   log('\nNext steps:', 'cyan');
   log(`  1. Add the repository secret ${envKey} with your ${cfg.provider} API key:`, 'reset');
   if (repo.includes('/')) {
@@ -565,13 +600,17 @@ async function runAutomate(rootDir, argv) {
   } else {
     log('     GitHub repo > Settings > Secrets and variables > Actions', 'dim');
   }
-  log('  2. Enable "Allow GitHub Actions to create and approve pull requests" (required for the update PR):', 'reset');
-  if (repo.includes('/')) {
-    log(`     https://github.com/${repo}/settings/actions`, 'dim');
+  if (prPermission === 'enabled' || prPermission === 'already-enabled') {
+    log('  2. "Allow GitHub Actions to create and approve pull requests" is already on — the update PR step is ready.', 'reset');
   } else {
-    log('     GitHub repo > Settings > Actions > General > Workflow permissions', 'dim');
+    log('  2. Enable "Allow GitHub Actions to create and approve pull requests" (required for the update PR):', 'reset');
+    if (repo.includes('/')) {
+      log(`     https://github.com/${repo}/settings/actions`, 'dim');
+    } else {
+      log('     GitHub repo > Settings > Actions > General > Workflow permissions', 'dim');
+    }
+    log('     Without this, the update still runs and commits safely — only opening the review PR fails, and the workflow run will show that failure clearly rather than hide it.', 'dim');
   }
-  log('     Without this, the update still runs and commits safely — only opening the review PR fails, and the workflow run will show that failure clearly rather than hide it.', 'dim');
   log('  3. Make sure the knowledge base itself is committed (gitset knowledge generate, then commit docs/gitset-knowledge/ and AGENTS.md).', 'reset');
   log('  4. Commit and push the workflow file.', 'reset');
   log('\nWhen mapped source changes land, CI opens a PR on branch gitset/knowledge-update — you review it like any docs change. Runs with no mapped changes make zero AI calls.', 'dim');
