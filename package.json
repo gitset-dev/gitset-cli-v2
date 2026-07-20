@@ -1,6 +1,6 @@
 {
   "name": "@gitset-dev/cli",
-  "version": "2.4.3",
+  "version": "2.5.0",
   "description": "Gitset CLI \u2014 drafts commits, PRs, issues, READMEs and release notes with your own AI key. Fully local: your code and keys never touch a Gitset server. Draft. Refine. Ship.",
   "type": "commonjs",
   "bin": {
