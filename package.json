@@ -1,7 +1,7 @@
 {
   "name": "@gitset-dev/cli",
-  "version": "2.3.3",
-  "description": "Gitset CLI — drafts commits, PRs, issues, READMEs and release notes with your own AI key. Fully local: your code and keys never touch a Gitset server. Draft. Refine. Ship.",
+  "version": "2.4.0",
+  "description": "Gitset CLI \u2014 drafts commits, PRs, issues, READMEs and release notes with your own AI key. Fully local: your code and keys never touch a Gitset server. Draft. Refine. Ship.",
   "type": "commonjs",
   "bin": {
     "gitset": "index.js"
@@ -33,7 +33,7 @@
     "pull-request",
     "release-notes"
   ],
-  "author": "Iván Luna <support@gitset.dev> (https://gitset.dev)",
+  "author": "Iv\u00e1n Luna <support@gitset.dev> (https://gitset.dev)",
   "license": "MPL-2.0",
   "publishConfig": {
     "access": "public"
