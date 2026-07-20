@@ -87,6 +87,38 @@ Local tools (no AI):
 Common flags: `--provider` `--model` `--yes` `--print` `--json`. Run
 `gitset help <command>` for everything else.
 
+## Knowledge Mapper
+
+`gitset knowledge` builds and maintains `docs/gitset-knowledge/` — a
+structured, always-current map of your codebase (architecture, module
+boundaries, commands, dependency graph) that both developers and AI coding
+agents can read before touching your code. It's generated from your source
+code, manifests, and CI configuration — never from your existing prose docs,
+so it can't inherit their drift.
+
+```sh
+gitset knowledge init       # scaffold optional .gitset-knowledge.json (include/exclude globs)
+gitset knowledge scan       # zero AI calls — discovers files, prints the plan + exact cost estimate
+gitset knowledge generate   # shows the estimate again, asks to confirm, then writes the knowledge base
+gitset knowledge update     # incremental — only changed modules (and their direct importers) are re-summarized
+gitset knowledge automate   # writes a GitHub Actions workflow that runs `update` in CI and opens a review PR
+```
+
+It's a six-stage local pipeline (Discover → Map → Summarize → Plan → Write →
+Validate): Discover and Map walk the repository and build an import graph
+with zero AI calls; only Summarize and Write touch your configured provider
+— there's no separate "default model" for this tool, it uses whatever you
+picked with `gitset config`; and a deterministic Validate pass checks every
+generated link, command, and script before anything is written to disk.
+Secrets are redacted locally before any file content is sent, and prose
+docs / test file bodies are listed structurally but never sent at all.
+
+`gitset knowledge automate` needs "Allow GitHub Actions to create and
+approve pull requests" enabled under the repo's **Settings > Actions >
+General > Workflow permissions** — without it, the scheduled update still
+runs and commits safely, but the review-PR step fails, and the workflow run
+will show that failure clearly rather than hide it.
+
 ## Templates
 
 Define your commit style, issue structure, PR format, README skeleton, or
