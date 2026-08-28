@@ -185,7 +185,7 @@ async function summarizeBatches({ batches, repo, argv, cachedSummaries = {}, usa
   return { moduleSummaries, providerUsed, modelUsed };
 }
 
-async function writeDocs({ run, moduleSummaries, repo, argv, usage }) {
+async function writeDocs({ run, moduleSummaries, repo, argv, usage, previousDocs = {} }) {
   const digest = km.buildStructuralDigest(run.map, run.files);
   const summariesText = km.summariesToText(moduleSummaries);
   const docs = [];
@@ -193,6 +193,7 @@ async function writeDocs({ run, moduleSummaries, repo, argv, usage }) {
   for (const spec of km.DOC_SPECS) {
     done += 1;
     log(`  [${done}/${km.DOC_SPECS.length}] Writing ${spec.filename}…`, 'dim');
+    const previous = previousDocs[spec.filename] || '';
     const generateDoc = (temperature) => genLocal.generate({
       tool: 'knowledgeWrite',
       ctx: {
@@ -202,6 +203,7 @@ async function writeDocs({ run, moduleSummaries, repo, argv, usage }) {
         guidance: spec.guidance || '',
         digest,
         summaries: summariesText,
+        previous,
       },
       provider: flag(argv, '--provider'),
       model: flag(argv, '--model'),
@@ -469,8 +471,22 @@ async function runUpdate(rootDir, argv) {
     log('\nRe-summarizing changed modules…', 'cyan');
     const { moduleSummaries, providerUsed, modelUsed } = await summarizeBatches({ batches: affectedBatches, repo, argv, cachedSummaries: cached, usage });
 
+    // A changed file drags its whole module (and importers' modules) through
+    // re-summarization, but only files actually in `diff` really changed —
+    // restore the rest to their prior text so untouched files don't get
+    // reworded (and can't silently lose detail) just for sharing a module.
+    km.reconcileUnchangedEntries(moduleSummaries, affectedKnown, diff, state.moduleSummaries || {});
+
+    const outDir = path.join(rootDir, km.OUTPUT_DIR);
+    const previousDocs = {};
+    for (const spec of km.DOC_SPECS) {
+      try {
+        previousDocs[spec.filename] = fs.readFileSync(path.join(outDir, spec.filename), 'utf8');
+      } catch {  }
+    }
+
     log('Re-writing documents…', 'cyan');
-    const docs = await writeDocs({ run, moduleSummaries, repo, argv, usage });
+    const docs = await writeDocs({ run, moduleSummaries, repo, argv, usage, previousDocs });
 
     const issues = validateAndReport({ docs, run });
 
