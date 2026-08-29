@@ -56,57 +56,72 @@ async function syncManifestVersion(tagName) {
         return;
     }
 
-    const found = manifestLib.detectManifestFile(fileNames);
-    if (!found) return;
+    // A project can carry more than one manifest with its own version field
+    // (e.g. package.json AND nuxt.config.ts) — detect every one present and
+    // sync them together, rather than acting on only the first found.
+    const candidates = manifestLib.detectManifestFiles(fileNames);
+    if (!candidates.length) return;
 
-    const filePath = path.join(process.cwd(), found.file);
-    let content;
-    try {
-        content = fs.readFileSync(filePath, 'utf8');
-    } catch {
-        return;
+    const changes = [];
+    for (const found of candidates) {
+        const filePath = path.join(process.cwd(), found.file);
+        let content;
+        try {
+            content = fs.readFileSync(filePath, 'utf8');
+        } catch {
+            continue;
+        }
+
+        let oldVersion;
+        try {
+            oldVersion = manifestLib.readVersion(found.type, content);
+        } catch (err) {
+            log(`\nCould not parse ${found.file}, skipping version sync (${err.message}).`, 'yellow');
+            continue;
+        }
+
+        if (!oldVersion) {
+            log(`\n${found.file} has no static top-level version field, skipping version sync.`, 'dim');
+            continue;
+        }
+        if (oldVersion === newVersion) continue;
+
+        let newContent;
+        try {
+            newContent = manifestLib.bumpVersion(found.type, content, newVersion);
+        } catch (err) {
+            log(`\nCould not bump ${found.file}, skipping version sync (${err.message}).`, 'yellow');
+            continue;
+        }
+        if (!newContent) continue;
+
+        changes.push({ file: found.file, oldVersion, newContent });
     }
 
-    let oldVersion;
-    try {
-        oldVersion = manifestLib.readVersion(found.type, content);
-    } catch (err) {
-        log(`\nCould not parse ${found.file}, skipping version sync (${err.message}).`, 'yellow');
-        return;
+    if (!changes.length) return;
+
+    log(`\n${changes.length > 1 ? 'These files differ' : `${changes[0].file} differs`} from this release:`, 'cyan');
+    for (const { file, oldVersion } of changes) {
+        log(`  ${file}`, 'reset');
+        log(`    - version: ${oldVersion}`, 'red');
+        log(`    + version: ${newVersion}`, 'green');
     }
-
-    if (!oldVersion) {
-        log(`\n${found.file} has no static top-level version field, skipping version sync.`, 'dim');
-        return;
-    }
-
-    if (oldVersion === newVersion) return;
-
-    let newContent;
-    try {
-        newContent = manifestLib.bumpVersion(found.type, content, newVersion);
-    } catch (err) {
-        log(`\nCould not bump ${found.file}, skipping version sync (${err.message}).`, 'yellow');
-        return;
-    }
-    if (!newContent) return;
-
-    log(`\n${found.file} version differs from this release:`, 'cyan');
-    log(`  - version: ${oldVersion}`, 'red');
-    log(`  + version: ${newVersion}`, 'green');
     log('  Only the top-level version field changes — dependency versions are left untouched.', 'dim');
 
-    const bumpChoice = await selectOption(`Update ${found.file} to ${newVersion} as part of this release?`, [
-        { label: `Yes, update ${found.file}`, value: 'yes' },
+    const label = changes.length > 1 ? `${changes.length} files` : changes[0].file;
+    const bumpChoice = await selectOption(`Update ${label} to ${newVersion} as part of this release?`, [
+        { label: `Yes, update ${label}`, value: 'yes' },
         { label: 'No, skip', value: 'no' },
     ]);
     if (bumpChoice !== 'yes') return;
 
     try {
-        fs.writeFileSync(filePath, newContent);
-        execFileSync('git', ['add', found.file], { stdio: 'pipe' });
+        for (const { file, newContent } of changes) {
+            fs.writeFileSync(path.join(process.cwd(), file), newContent);
+            execFileSync('git', ['add', file], { stdio: 'pipe' });
+        }
         execFileSync('git', ['commit', '-m', `chore: bump version to ${newVersion}`], { stdio: 'pipe' });
-        log(`Committed: chore: bump version to ${newVersion}`, 'green');
+        log(`Committed: chore: bump version to ${newVersion} (${changes.map((c) => c.file).join(', ')})`, 'green');
     } catch (err) {
         log(`Failed to commit the version bump: ${err.message}`, 'red');
         return;
