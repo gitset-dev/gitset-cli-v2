@@ -5,6 +5,7 @@ const os = require('os');
 const { log, askQuestion, selectOption } = require('../utils/ui');
 const genLocal = require('../../lib/generate-local');
 const manifestLib = require('../../lib/manifest');
+const spinner = require('../utils/spinner');
 
 function execCommand(cmd) {
     try {
@@ -210,9 +211,8 @@ module.exports = async function commandRelease(options = {}) {
     const repo = getRepoOwnerName();
 
     const generate = async (instr = '') => {
-        log('\nGenerating release notes…', 'cyan');
         try {
-            const result = await genLocal.generate({
+            const call = genLocal.generate({
                 tool: 'release',
                 ctx: {
                     tag: tagName,
@@ -227,6 +227,7 @@ module.exports = async function commandRelease(options = {}) {
                 maxTokens: 4096,
                 interactive: true,
             });
+            const result = await spinner.withSpinner('generating release notes', call);
             currentNotes = result.text;
             log(`\n--- Release Notes (via ${result.provider}) ---\n`, 'green');
             console.log(currentNotes);
