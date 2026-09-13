@@ -5,6 +5,7 @@ const os = require('os');
 const { log, askQuestion, selectOption } = require('../utils/ui');
 const genLocal = require('../../lib/generate-local');
 const manifestLib = require('../../lib/manifest');
+const releaseNotes = require('../../lib/release-notes');
 const spinner = require('../utils/spinner');
 
 function execCommand(cmd) {
@@ -20,25 +21,31 @@ function getTags() {
     return tagsOutput ? tagsOutput.split('\n').filter(Boolean) : [];
 }
 
-function getCommits(from, to) {
-    const cmd = `git log ${from}..${to} --pretty=format:"%h|%an|%s"`;
-    const output = execCommand(cmd);
+// %x1f (ASCII unit separator) rather than "|": a commit subject can contain a
+// pipe, and splitting on it used to cut the message short at the first one.
+// The full SHA comes along so commit links point at an unambiguous commit.
+const LOG_FORMAT = '%H%x1f%h%x1f%an%x1f%s';
+
+function parseLog(output) {
     if (!output) return [];
     return output.split('\n').filter(Boolean).map(line => {
-        const [hash, author, message] = line.split('|');
-        return { hash, author, message };
+        const [fullHash, hash, author, ...rest] = line.split('\x1f');
+        return { fullHash, hash, author, message: rest.join('\x1f') };
     });
+}
+
+function getCommits(from, to) {
+    return parseLog(execCommand(`git log ${from}..${to} --pretty=format:"${LOG_FORMAT}"`));
 }
 
 function getCurrentBranch() {
     return execCommand('git rev-parse --abbrev-ref HEAD') || 'HEAD';
 }
 
-function getRepoOwnerName() {
-    const remoteUrl = execCommand('git config --get remote.origin.url');
-    if (!remoteUrl) return '';
-    const match = remoteUrl.match(/[:/]([^/]+)\/([^/.]+)(?:\.git)?$/);
-    return match ? `${match[1]}/${match[2]}` : '';
+// Shared with the hosted API. Also fixes repo names containing a dot, which the
+// old owner/name regex dropped, and understands GitLab's nested groups.
+function getRemote() {
+    return releaseNotes.parseRemoteUrl(execCommand('git config --get remote.origin.url'));
 }
 
 function commitsToText(commits) {
@@ -145,7 +152,7 @@ async function syncManifestVersion(tagName) {
     }
 }
 
-module.exports = async function commandRelease(options = {}) {
+async function commandRelease(options = {}) {
     console.log('\n=== Gitset Release Manager (BYOAI) ===\n');
 
     let fromRef = options.from;
@@ -181,13 +188,7 @@ module.exports = async function commandRelease(options = {}) {
     if (fromRef) {
         commits = getCommits(fromRef, toRef);
     } else {
-        const output = execCommand(`git log ${toRef} --pretty=format:"%h|%an|%s"`);
-        if (output) {
-            commits = output.split('\n').filter(Boolean).map(line => {
-                const [hash, author, message] = line.split('|');
-                return { hash, author, message };
-            });
-        }
+        commits = parseLog(execCommand(`git log ${toRef} --pretty=format:"${LOG_FORMAT}"`));
     }
 
     if (commits.length === 0) {
@@ -208,7 +209,23 @@ module.exports = async function commandRelease(options = {}) {
     }
 
     let currentNotes = '';
-    const repo = getRepoOwnerName();
+    const remote = getRemote();
+    const repo = remote ? remote.path : '';
+
+    // Commit references (gitset-dev/gitset#60), identical to the hosted API:
+    // the model cites short SHAs, lib/release-notes links the ones really in
+    // this range, and a refinement hands the model the body unlinked so it
+    // never has to reproduce a full SHA inside a URL.
+    const referenceCommits = releaseNotes.shouldReferenceCommits({
+        commits,
+        template: genLocal.loadTemplate('release'),
+    });
+    const linkRefs = (text) => (referenceCommits && remote
+        ? releaseNotes.linkCommitRefs(text, {
+            commits: commits.map(c => ({ hash: c.fullHash || c.hash })),
+            commitUrl: (sha) => releaseNotes.commitUrlFor(remote, sha),
+        })
+        : text);
 
     const generate = async (instr = '') => {
         try {
@@ -220,15 +237,17 @@ module.exports = async function commandRelease(options = {}) {
                     commits: commitsToText(commits),
                     mode: commits.length === 0 ? 'manual' : 'summary',
                     instruction: instr,
-                    previous: instr ? currentNotes : '',
+                    previous: instr ? (referenceCommits ? releaseNotes.unlinkCommitRefs(currentNotes) : currentNotes) : '',
                 },
                 provider: options.provider,
                 model: options.model,
-                maxTokens: 4096,
+                // Matches the hosted API (see api/release.js): 4096 came back empty
+                // from a reasoning model on a real 17-commit range.
+                maxTokens: 8192,
                 interactive: true,
             });
             const result = await spinner.withSpinner('generating release notes', call);
-            currentNotes = result.text;
+            currentNotes = linkRefs(result.text);
             log(`\n--- Release Notes (via ${result.provider}) ---\n`, 'green');
             console.log(currentNotes);
             log('\n-------------------------------\n', 'green');
@@ -290,4 +309,8 @@ module.exports = async function commandRelease(options = {}) {
             }
         }
     }
-};
+}
+
+module.exports = commandRelease;
+module.exports.parseLog = parseLog;
+module.exports.LOG_FORMAT = LOG_FORMAT;

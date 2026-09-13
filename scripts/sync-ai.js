@@ -7,7 +7,7 @@
  * pre-launch npm-publish pipeline (see architecture decision: 3 repos, shared
  * core authored in Core, mirrored here).
  *
- * Source of truth: ../gitset-core-v2/lib/{ai,prompts}
+ * Source of truth: ../gitset-core-v2/lib/{ai,prompts,manifest,knowledge,release-notes}
  * Run: pnpm sync:ai   (re-run whenever Core's lib/ai or lib/prompts changes)
  *
  * Tests are NOT vendored (the CLI has its own). The private prompt overlay is
@@ -18,7 +18,8 @@ const path = require('path');
 
 const CORE = path.resolve(__dirname, '..', '..', 'gitset-core-v2', 'lib');
 const DEST = path.resolve(__dirname, '..', 'lib');
-const MODULES = ['ai', 'prompts', 'manifest', 'knowledge'];
+// release-notes must travel with prompts: the release prompt requires it.
+const MODULES = ['ai', 'prompts', 'manifest', 'knowledge', 'release-notes'];
 
 const SKIP_DIRS = new Set(['__tests__', 'node_modules', 'private']);
 
