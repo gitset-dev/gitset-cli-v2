@@ -8,7 +8,7 @@
   <p><strong><code>Draft. Refine. Ship.</code></strong></p>
 
   <p>
-    <img src="https://img.shields.io/badge/license-MPL--2.0-blue?style=flat-square" alt="MPL-2.0" />
+    <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0" />
     <img src="https://img.shields.io/badge/model-BYOAI-white?style=flat-square" alt="BYOAI" />
     <img src="https://img.shields.io/badge/node-%E2%89%A520-green?style=flat-square" alt="node >= 20" />
   </p>
@@ -151,5 +151,5 @@ Issues and pull requests are welcome:
 
 ## License
 
-[MPL-2.0](LICENSE) © Iván Luna. The Gitset name and logo are not covered by
+[Apache-2.0](LICENSE) © Iván Luna. The Gitset name and logo are not covered by
 the code license.

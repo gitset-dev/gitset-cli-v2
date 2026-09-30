@@ -34,7 +34,7 @@
     "release-notes"
   ],
   "author": "Iván Luna <support@gitset.dev> (https://gitset.dev)",
-  "license": "MPL-2.0",
+  "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"
   },
